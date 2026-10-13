@@ -458,15 +458,7 @@ mod tests {
         let snap = p.analytics();
         assert_eq!(snap.tcp.packets, 6);
         assert_eq!(snap.dns.queries, 1);
-        assert_eq!(
-            snap.rankings
-                .protocols
-                .iter()
-                .map(|r| r.key.as_str())
-                .collect::<Vec<_>>()
-                .contains(&"TLS"),
-            true
-        );
+        assert!(snap.rankings.protocols.iter().any(|r| r.key == "TLS"));
         assert!(snap.problems.is_empty());
     }
 }
