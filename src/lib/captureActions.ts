@@ -1,5 +1,6 @@
 import { api, errorMessage } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
+import { useDnsStore } from "@/stores/dns";
 import { useFlowsStore } from "@/stores/flows";
 import { usePacketsStore } from "@/stores/packets";
 
@@ -21,6 +22,7 @@ export const captureActions = {
     st().reset();
     usePacketsStore.getState().clear();
     useFlowsStore.getState().clear();
+    useDnsStore.getState().clear();
     return run(() => api.captureStart(iface));
   },
   pause: () => run(api.capturePause),
@@ -30,6 +32,7 @@ export const captureActions = {
     st().reset();
     usePacketsStore.getState().clear();
     useFlowsStore.getState().clear();
+    useDnsStore.getState().clear();
     return run(api.clearCapture);
   },
   openFile: () => undefined,

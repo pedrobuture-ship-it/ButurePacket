@@ -19,3 +19,4 @@ export * from "./Sparkline";
 export * from "./StatusIndicator";
 export * from "./Tabs";
 export * from "./Tooltip";
+export * from "./VirtualTable";

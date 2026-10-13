@@ -142,11 +142,16 @@ export function FlowInspector({ flow }: { flow: FlowView }) {
         {tab === "packets" && <PacketsTab flow={flow} />}
         {tab === "dns" &&
           (flow.domains.length ? (
-            <ul className="selectable flex flex-col gap-1 font-mono text-xs">
-              {flow.domains.map((d) => (
-                <li key={d}>{d}</li>
-              ))}
-            </ul>
+            <div className="flex flex-col gap-2 text-xs">
+              <ul className="selectable flex flex-col gap-1 font-mono">
+                {flow.domains.map((d) => (
+                  <li key={d}>
+                    <span className="text-muted">Likely domain:</span> {d}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted">Inferred from DNS answers seen shortly before this flow started. A shared address can serve many domains, so treat this as a hint, not proof.</p>
+            </div>
           ) : (
             <EmptyState title="No domain observed" description="No DNS answer matching this flow's address was captured." />
           ))}

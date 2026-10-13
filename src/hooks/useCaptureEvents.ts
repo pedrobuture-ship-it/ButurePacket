@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { api, errorMessage, isIpcError, on } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
+import { useDnsStore } from "@/stores/dns";
 import { useFlowsStore } from "@/stores/flows";
 import { usePacketsStore } from "@/stores/packets";
 import type { SessionState } from "@/types/ipc";
@@ -20,6 +21,7 @@ export function useCaptureEvents() {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
       on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://dns", (p) => useDnsStore.getState().apply(p)),
       on("capture://flows", (flows) => useFlowsStore.getState().upsert(flows)),
       on("capture://packets", (batch) => usePacketsStore.getState().append(batch)),
       on("capture://state", ({ state, error }) => {

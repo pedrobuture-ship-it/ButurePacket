@@ -102,3 +102,51 @@ export interface FlowView {
   /** Bytes per second for the last 60 seconds. */
   sparkline: number[];
 }
+
+export type DnsStatus = "pending" | "ok" | "failed" | "timeout";
+
+export interface DnsAnswer {
+  name: string;
+  recordType: string;
+  data: string;
+  ttl: number;
+}
+
+export interface DnsTransaction {
+  id: number;
+  flowId: number | null;
+  client: string;
+  resolver: string;
+  transactionId: number;
+  queryName: string;
+  queryType: string;
+  queryAt: number | null;
+  responseAt: number | null;
+  /** Microseconds. */
+  latency: number | null;
+  responseCode: string | null;
+  status: DnsStatus;
+  answers: DnsAnswer[];
+}
+
+export interface ResolverStat {
+  ip: string;
+  queries: number;
+  failures: number;
+  avgLatency: number | null;
+}
+
+export interface DnsStats {
+  queries: number;
+  responses: number;
+  failures: number;
+  uniqueDomains: number;
+  avgLatency: number | null;
+  p95Latency: number | null;
+  resolvers: ResolverStat[];
+}
+
+export interface DnsPayload {
+  transactions: DnsTransaction[];
+  stats: DnsStats | null;
+}
