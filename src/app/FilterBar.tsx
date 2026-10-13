@@ -1,6 +1,8 @@
+import { useShallow } from "zustand/react/shallow";
 import { useMemo, useRef, useState } from "react";
 import { AlertCircle, Clock, Filter, Search } from "lucide-react";
-import { Button, IconButton, Input } from "@/components/ui";
+import { Button, Dropdown, IconButton, Input } from "@/components/ui";
+import { loadHistory, pushHistory, saveHistory } from "@/lib/filterHistory";
 import { cn } from "@/lib/cn";
 import { applySuggestion, suggest, type Suggestion } from "@/lib/filter/suggest";
 import { RecentsCache, buildRecents } from "@/lib/filter/recents";
@@ -27,11 +29,12 @@ function computeRecents() {
 }
 
 export function FilterBar() {
-  const { filterDraft, filter, filterError, setFilterDraft, applyFilter, clearFilter } = useUiStore();
+  const { filterDraft, filter, filterError, setFilterDraft, applyFilter, clearFilter } = useUiStore(useShallow((s) => ({ filterDraft: s.filterDraft, filter: s.filter, filterError: s.filterError, setFilterDraft: s.setFilterDraft, applyFilter: s.applyFilter, clearFilter: s.clearFilter })));
   const inputRef = useRef<HTMLInputElement>(null);
   const [cursor, setCursor] = useState(0);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [history, setHistory] = useState(loadHistory);
 
   const suggestions = useMemo(() => (open ? suggest(filterDraft, cursor, collectRecents()) : null), [open, filterDraft, cursor]);
   const items = suggestions?.items ?? [];
@@ -56,6 +59,9 @@ export function FilterBar() {
           e.preventDefault();
           setOpen(false);
           applyFilter();
+          const next = pushHistory(history, filterDraft);
+          setHistory(next);
+          saveHistory(next);
         }}
       >
         <Input
@@ -104,9 +110,14 @@ export function FilterBar() {
         <IconButton label="Clear filter" active={filter !== ""} onClick={clearFilter}>
           <Filter size={15} />
         </IconButton>
-        <IconButton label="Filter history" disabled>
-          <Clock size={15} />
-        </IconButton>
+        <Dropdown
+          trigger={({ toggle }) => (
+            <IconButton label="Filter history" disabled={history.length === 0} onClick={toggle}>
+              <Clock size={15} />
+            </IconButton>
+          )}
+          items={history.map((h) => ({ id: h, label: h, onSelect: () => applyFilter(h) }))}
+        />
       </form>
       {filterError && (
         <p role="alert" className="flex items-center gap-1.5 px-3 pb-2 font-mono text-xs text-danger">
@@ -126,9 +137,9 @@ export function FilterBar() {
               }}
               className={cn("flex cursor-pointer items-center gap-3 px-3 py-1 font-mono text-xs", i === active ? "bg-hover text-fg" : "text-muted")}
             >
-              <span className="w-14 shrink-0 text-[10px] uppercase tracking-wide text-faint">{item.kind}</span>
+              <span className="w-14 shrink-0 text-[10px] uppercase tracking-wide text-muted">{item.kind}</span>
               <span className="text-fg">{item.label}</span>
-              {item.hint && <span className="truncate font-sans text-faint">{item.hint}</span>}
+              {item.hint && <span className="truncate font-sans text-muted">{item.hint}</span>}
             </li>
           ))}
         </ul>

@@ -99,19 +99,19 @@ export function OverviewView() {
                         <Badge tone={protocolTone(flowProtocolLabel(f))}>{flowProtocolLabel(f)}</Badge>
                         <span className="truncate font-mono">
                           <span className="text-fg">{f.tls?.sni ?? f.domains[0] ?? endpointText(f.endpointB)}</span>
-                          <span className="text-faint"> · {endpointText(f.endpointA)} → {endpointText(f.endpointB, true)}</span>
+                          <span className="text-muted"> · {endpointText(f.endpointA)} → {endpointText(f.endpointB, true)}</span>
                         </span>
                         <span className="font-mono text-muted">{formatBytes(f.totalBytes)}</span>
                       </button>
                     </li>
                   ))}
-                  {top.length === 0 && <li className="px-3 py-3 text-xs text-faint">No flows yet</li>}
+                  {top.length === 0 && <li className="px-3 py-3 text-xs text-muted">No flows yet</li>}
                 </ol>
               </Panel>
 
               <Panel title="Protocol Distribution" bodyClassName="p-3">
                 {slices.length === 0 ? (
-                  <p className="text-xs text-faint">No data yet</p>
+                  <p className="text-xs text-muted">No data yet</p>
                 ) : (
                   <>
                     <div role="img" aria-label="Protocol distribution by bytes" className="flex h-2.5 overflow-hidden rounded-sm bg-bg">
@@ -125,7 +125,7 @@ export function OverviewView() {
                           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SLICE_COLORS[i % SLICE_COLORS.length] }} />
                           <span className="flex-1 truncate">{s.key}</span>
                           <span className="text-muted">{formatBytes(s.bytes)}</span>
-                          <span className="w-12 text-right text-faint">{(s.fraction * 100).toFixed(1)}%</span>
+                          <span className="w-12 text-right text-muted">{(s.fraction * 100).toFixed(1)}%</span>
                         </li>
                       ))}
                     </ul>
@@ -144,7 +144,7 @@ export function OverviewView() {
                     <StoryPanel flow={story} />
                   </div>
                 ) : (
-                  <p className="text-xs text-faint">A story appears once a connection has been seen.</p>
+                  <p className="text-xs text-muted">A story appears once a connection has been seen.</p>
                 )}
               </Panel>
 

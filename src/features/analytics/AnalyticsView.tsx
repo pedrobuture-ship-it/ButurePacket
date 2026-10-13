@@ -16,7 +16,7 @@ function Card({ label, value, hint, values, tone = "text-primary" }: { label: st
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
           <span className="whitespace-nowrap font-mono text-2xl leading-none text-fg">{value}</span>
-          {hint && <span className="font-mono text-[10px] text-faint">{hint}</span>}
+          {hint && <span className="font-mono text-[10px] text-muted">{hint}</span>}
         </div>
         <Sparkline values={values} width={120} height={36} className={tone} label={`${label} over the last minute`} />
       </div>
@@ -29,7 +29,7 @@ function Stat({ label, value, hint, bad }: { label: string; value: ReactNode; hi
     <div className="flex flex-col gap-0.5">
       <span className="text-[10px] font-medium uppercase tracking-wider text-muted">{label}</span>
       <span className={cn("font-mono text-lg leading-none", bad ? "text-warning" : "text-fg")}>{value}</span>
-      {hint && <span className="font-mono text-[10px] text-faint">{hint}</span>}
+      {hint && <span className="font-mono text-[10px] text-muted">{hint}</span>}
     </div>
   );
 }
@@ -39,7 +39,7 @@ function Ranking({ title, rows, mono = true }: { title: string; rows: RankEntry[
   return (
     <Panel title={title} bodyClassName="p-3">
       {rows.length === 0 ? (
-        <p className="text-xs text-faint">No data yet</p>
+        <p className="text-xs text-muted">No data yet</p>
       ) : (
         <ol className="flex flex-col gap-1.5">
           {rows.map((r, i) => (

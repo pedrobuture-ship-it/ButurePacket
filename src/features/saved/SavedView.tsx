@@ -60,7 +60,7 @@ export function SavedView() {
                 <li key={c.id} className="flex items-center gap-3 px-4 py-2.5">
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-mono text-[13px] text-fg">{sanitizeText(c.name)}</p>
-                    <p className="truncate text-[11px] text-faint" title={sanitizeText(c.folder)}>
+                    <p className="truncate text-[11px] text-muted" title={sanitizeText(c.folder)}>
                       {sanitizeText(c.folder)}
                     </p>
                   </div>

@@ -123,4 +123,30 @@ None found.
 
 ## Resolution
 
-*(filled in after the fixes — see the end of this document)*
+
+| ID | Status | What was done |
+| --- | --- | --- |
+| H1 | Fixed | Import claim is an RAII guard released on drop; worker runs under `catch_unwind`; tests incl. panicking worker |
+| H2 | Fixed | `capture_start` / `clear_capture` refuse while importing; imports refuse while live (checked under the session lock) |
+| H3 | Fixed | Live writer queue 256 → 32 jobs |
+| H4 | Fixed | No flow for TCP/UDP with unreadable headers; tests over every truncation |
+| H5 | Fixed | Flow drains capped at 5,000 (DNS 2,000); the rest stay queued; tests |
+| M1 | Fixed | `compare_exchange` claim |
+| M2 | Fixed | A pure SYN on a closed/reset flow starts a new flow; eviction no longer unmaps the newer flow |
+| M3 | Fixed | Temp file created exclusively with a unique name |
+| M4 | Fixed | Recents cached per data version |
+| M5 | Fixed | Tab cycles inside modals/drawers/palette |
+| M6 | Fixed | Toolbar and filter bar use shallow selectors |
+| M7 | Fixed | Unused IPC commands and wrappers removed; `query_stored_packets` is now used by the stored-capture search in Packets |
+| M8 | Fixed | UDP/ICMP idle gap (2 min) starts a new flow |
+| L1 | Fixed (usage) | Informational text moved from `faint` to `muted`; the prescribed palette tokens are unchanged |
+| L2 | Fixed | Recent-filters menu (12 entries, persisted) |
+| L3 | Fixed | `protocols/ports.rs` is the single table |
+| L4 | Fixed | One clipboard helper, one clock formatter, one Rust duration formatter (the duplicated description list remains in two inspectors) |
+| L5 | Fixed | Writer closed when a session stops or errors |
+| L6 | Accepted | ~60 ms once a second at 200k flows; documented |
+| L7 | Accepted | The mutable-buffer + version pattern keeps its explicit `eslint-disable` lines |
+| L8 | Open | Window edge resizing on Wayland is unverified |
+
+Final state: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (with and without the
+`testgen` feature) and `cargo test` pass; `npm run typecheck`, `lint` and `test` pass.

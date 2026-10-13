@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, BookOpen, Copy } from "lucide-react";
 import { Badge, Button, EmptyState, Modal, Sparkline, Tabs } from "@/components/ui";
@@ -45,7 +46,7 @@ function Endpoint({ role, flow, side }: { role: "CLIENT" | "SERVER"; flow: FlowV
     <div className="flex flex-col items-center gap-0.5">
       <span className="text-[10px] font-semibold tracking-widest text-muted">{role}</span>
       <span className="selectable font-mono text-sm text-fg">{endpointText(e)}</span>
-      {e.port > 0 && <span className="font-mono text-[11px] text-faint">port {e.port}</span>}
+      {e.port > 0 && <span className="font-mono text-[11px] text-muted">port {e.port}</span>}
     </div>
   );
 }
@@ -56,10 +57,10 @@ function Diagram({ flow }: { flow: FlowView }) {
       <Endpoint role="CLIENT" flow={flow} side="a" />
       <div className="flex flex-col items-start gap-0.5 font-mono text-xs">
         <span className="flex items-center gap-1.5 text-info">
-          <ArrowUp size={13} /> {formatBytes(flow.bytesAToB)} <span className="text-faint">({formatCount(flow.packetsAToB)} pkts)</span>
+          <ArrowUp size={13} /> {formatBytes(flow.bytesAToB)} <span className="text-muted">({formatCount(flow.packetsAToB)} pkts)</span>
         </span>
         <span className="flex items-center gap-1.5 text-primary">
-          <ArrowDown size={13} /> {formatBytes(flow.bytesBToA)} <span className="text-faint">({formatCount(flow.packetsBToA)} pkts)</span>
+          <ArrowDown size={13} /> {formatBytes(flow.bytesBToA)} <span className="text-muted">({formatCount(flow.packetsBToA)} pkts)</span>
         </span>
       </div>
       <Endpoint role="SERVER" flow={flow} side="b" />
@@ -152,7 +153,7 @@ function TlsTab({ flow }: { flow: FlowView }) {
     <div className="flex flex-col gap-4">
       <div className="rounded border border-line bg-bg px-3 py-2.5 font-mono text-sm">
         {tlsSummary(flow).map((line) => (
-          <div key={line} className={line.endsWith(UNAVAILABLE) ? "text-faint" : "text-fg"}>
+          <div key={line} className={line.endsWith(UNAVAILABLE) ? "text-muted" : "text-fg"}>
             {line}
           </div>
         ))}
@@ -194,7 +195,7 @@ function StoryModal({ flow, onClose }: { flow: FlowView; onClose: () => void }) 
       width={620}
       footer={
         <>
-          <Button icon={<Copy size={13} />} onClick={() => void navigator.clipboard?.writeText(storyToText(story)).catch(() => undefined)}>
+          <Button icon={<Copy size={13} />} onClick={() => copyText(storyToText(story))}>
             Copy as text
           </Button>
           <Button variant="primary" onClick={onClose}>

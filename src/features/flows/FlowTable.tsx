@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Badge, ContextMenu, EmptyState, type ContextMenuState } from "@/components/ui";
@@ -25,7 +26,7 @@ export function FlowTable({ flows, selectedId, onSelect }: Props) {
   const setView = useUiStore((s) => s.setView);
   const setTimelineFlow = useTimelineStore((s) => s.setFlow);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
+  const copy = copyText;
 
   const openMenu = (e: React.MouseEvent, f: FlowView) => {
     e.preventDefault();

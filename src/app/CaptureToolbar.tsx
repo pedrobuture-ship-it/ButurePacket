@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { FolderOpen, Pause, Play, Save, Settings, Square, Trash2 } from "lucide-react";
 import { Button, IconButton, Select } from "@/components/ui";
 import { useCaptureStore } from "@/stores/capture";
@@ -5,7 +6,7 @@ import { useUiStore } from "@/stores/ui";
 import { captureActions } from "@/lib/captureActions";
 
 export function CaptureToolbar() {
-  const { state, interfaces, selectedInterface, selectInterface } = useCaptureStore();
+  const { state, interfaces, selectedInterface, selectInterface } = useCaptureStore(useShallow((s) => ({ state: s.state, interfaces: s.interfaces, selectedInterface: s.selectedInterface, selectInterface: s.selectInterface })));
   const setView = useUiStore((s) => s.setView);
   const stats = useCaptureStore((s) => s.stats);
   const running = state === "capturing";

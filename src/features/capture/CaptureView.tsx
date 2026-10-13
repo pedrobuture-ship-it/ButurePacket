@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { useEffect } from "react";
 import { CheckCircle2, Copy, RefreshCw, ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
 import { Badge, Button, EmptyState, Panel, type BadgeTone } from "@/components/ui";
@@ -16,7 +17,7 @@ function Fact({ label, value }: { label: string; value: boolean | null }) {
   return (
     <div className="flex items-center justify-between gap-6 text-xs">
       <span className="text-muted">{label}</span>
-      <span className={cn("font-mono", value === null ? "text-faint" : value ? "text-primary" : "text-danger")}>{value === null ? "unknown" : value ? "yes" : "no"}</span>
+      <span className={cn("font-mono", value === null ? "text-muted" : value ? "text-primary" : "text-danger")}>{value === null ? "unknown" : value ? "yes" : "no"}</span>
     </div>
   );
 }
@@ -70,7 +71,7 @@ export function CaptureView() {
               {report.commands.map((c) => (
                 <div key={c} className="flex items-center gap-3 px-3 py-2">
                   <code className="selectable flex-1 break-all font-mono text-xs text-fg">{sanitizeText(c)}</code>
-                  <Button size="sm" icon={<Copy size={12} />} onClick={() => void navigator.clipboard?.writeText(c).catch(() => undefined)}>
+                  <Button size="sm" icon={<Copy size={12} />} onClick={() => copyText(c)}>
                     Copy
                   </Button>
                 </div>
@@ -98,13 +99,13 @@ export function CaptureView() {
         </Panel>
 
         <Panel title={`Interfaces (${report.interfaces.length})`} bodyClassName="divide-y divide-line/60">
-          {report.interfaces.length === 0 && <p className="p-4 text-xs text-faint">No interfaces were found.</p>}
+          {report.interfaces.length === 0 && <p className="p-4 text-xs text-muted">No interfaces were found.</p>}
           {report.interfaces.map((i) => (
             <div key={i.name} className="flex items-center gap-3 px-4 py-2 text-xs">
-              {i.openable ? <CheckCircle2 size={14} className="text-primary" /> : <ShieldAlert size={14} className="text-faint" />}
+              {i.openable ? <CheckCircle2 size={14} className="text-primary" /> : <ShieldAlert size={14} className="text-muted" />}
               <span className="w-40 shrink-0 truncate font-mono text-fg">{sanitizeText(i.name)}</span>
               <span className="min-w-0 flex-1 truncate text-muted">{sanitizeText(i.description ?? "")}</span>
-              <span className={cn("shrink-0", i.openable ? "text-primary" : "text-faint")}>{i.openable ? "can capture" : "not permitted"}</span>
+              <span className={cn("shrink-0", i.openable ? "text-primary" : "text-muted")}>{i.openable ? "can capture" : "not permitted"}</span>
             </div>
           ))}
         </Panel>

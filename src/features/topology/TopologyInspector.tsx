@@ -46,7 +46,7 @@ export function NodeInspector({ node, graph }: { node: GraphNode; graph: Graph }
               <li key={d}>{d}</li>
             ))}
           </ul>
-          <p className="mt-1 text-[11px] text-faint">Names come from TLS SNI and recent DNS answers; an address can serve many domains.</p>
+          <p className="mt-1 text-[11px] text-muted">Names come from TLS SNI and recent DNS answers; an address can serve many domains.</p>
         </div>
       )}
       <div>

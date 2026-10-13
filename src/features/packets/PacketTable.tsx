@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
@@ -14,9 +15,7 @@ import { filterProgress, makePacketView, makeStoredView } from "./packetView";
 const HEADERS = ["#", "Time", "Source", "Destination", "Protocol", "Src Port", "Dst Port", "Length", "Info"];
 const FOLLOW_THRESHOLD = ROW_HEIGHT * 2;
 
-function copy(text: string) {
-  void navigator.clipboard?.writeText(text).catch(() => undefined);
-}
+const copy = copyText;
 
 export function PacketTable() {
   const rowCount = usePacketsStore((s) => s.count);

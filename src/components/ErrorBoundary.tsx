@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui";
@@ -40,10 +41,10 @@ export class ErrorBoundary extends Component<Props, State> {
         <AlertTriangle size={30} className="text-warning" />
         <p className="text-sm font-medium">{this.props.label} ran into a problem</p>
         <p className="max-w-md text-xs text-muted">The rest of the application is unaffected and no capture data was lost. You can try again, or switch to another view.</p>
-        <p className="max-w-lg truncate font-mono text-[11px] text-faint">{sanitizeText(error.message)}</p>
+        <p className="max-w-lg truncate font-mono text-[11px] text-muted">{sanitizeText(error.message)}</p>
         <div className="flex gap-2">
           <Button onClick={() => this.setState({ error: null })}>Try again</Button>
-          <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(details).catch(() => undefined)}>
+          <Button variant="ghost" onClick={() => copyText(details)}>
             Copy details
           </Button>
         </div>

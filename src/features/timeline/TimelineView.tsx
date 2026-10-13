@@ -77,7 +77,7 @@ export function TimelineView() {
               type="button"
               aria-pressed={groups.has(g.id)}
               onClick={() => toggleGroup(g.id)}
-              className={cn("rounded border px-2 py-1 text-xs transition-colors duration-150", groups.has(g.id) ? "border-primary-muted bg-primary-muted/30 text-fg" : "border-line text-faint hover:bg-hover")}
+              className={cn("rounded border px-2 py-1 text-xs transition-colors duration-150", groups.has(g.id) ? "border-primary-muted bg-primary-muted/30 text-fg" : "border-line text-muted hover:bg-hover")}
             >
               {g.label}
             </button>
@@ -106,7 +106,7 @@ export function TimelineView() {
       <div className="shrink-0 border-b border-line">
         <TimelineChart events={events} view={view} bounds={bounds} selectedId={selectedEventId} groups={groups} onView={setWindow} onSelect={selectEvent} />
       </div>
-      <p className="shrink-0 px-3 py-1 text-[11px] text-faint">Scroll to zoom · drag to pan · double-click to fit</p>
+      <p className="shrink-0 px-3 py-1 text-[11px] text-muted">Scroll to zoom · drag to pan · double-click to fit</p>
       <div className="min-h-0 flex-1 border-t border-line">
         <VirtualTable
           label="Events"

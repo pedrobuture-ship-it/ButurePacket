@@ -15,7 +15,7 @@ export function Metric({ label, value, unit, hint }: Props) {
         {value}
         {unit && <span className="ml-1 text-xs text-muted">{unit}</span>}
       </span>
-      {hint && <span className="font-mono text-[10px] text-faint">{hint}</span>}
+      {hint && <span className="font-mono text-[10px] text-muted">{hint}</span>}
     </div>
   );
 }

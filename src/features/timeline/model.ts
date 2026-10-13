@@ -1,4 +1,7 @@
+import { formatClock } from "@/lib/format";
 import type { EventKind, TimelineEvent } from "@/types/ipc";
+
+export { formatClock };
 
 export type EventGroup = "dns" | "tcp" | "tls" | "problems" | "traffic";
 
@@ -104,13 +107,6 @@ export function niceTicks(view: Range, target = 8): number[] {
   const out: number[] = [];
   for (let t = Math.ceil(view.start / step) * step; t <= view.end; t += step) out.push(t);
   return out;
-}
-
-export function formatClock(micros: number, withMillis: boolean): string {
-  const d = new Date(Math.floor(micros / 1000));
-  const p = (n: number, w = 2) => String(n).padStart(w, "0");
-  const base = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-  return withMillis ? `${base}.${p(d.getMilliseconds(), 3)}` : base;
 }
 
 /** Index of the first event with ts >= t (events sorted by ts). */

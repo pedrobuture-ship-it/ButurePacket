@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/clipboard";
 import { useMemo, useState } from "react";
 import { Badge, ContextMenu, EmptyState, Input, Metric, Tabs, VirtualTable, type BadgeTone, type ContextMenuState, type VColumn } from "@/components/ui";
 import { formatCount, formatLatency, formatTimestamp } from "@/lib/format";
@@ -88,8 +89,8 @@ export function DnsView() {
                 x: e.clientX,
                 y: e.clientY,
                 items: [
-                  { id: "name", label: "Copy name", onSelect: () => void navigator.clipboard?.writeText(t.queryName).catch(() => undefined) },
-                  { id: "answers", label: "Copy answers", disabled: t.answers.length === 0, onSelect: () => void navigator.clipboard?.writeText(answersText(t, 50)).catch(() => undefined) },
+                  { id: "name", label: "Copy name", onSelect: () => copyText(t.queryName) },
+                  { id: "answers", label: "Copy answers", disabled: t.answers.length === 0, onSelect: () => copyText(answersText(t, 50)) },
                   { id: "sep", label: "", separator: true },
                   { id: "fd", label: "Filter by this domain", onSelect: () => applyFilter(`domain = "${t.queryName}"`) },
                   { id: "fr", label: "Filter by resolver", onSelect: () => applyFilter(`resolver = ${t.resolver}`) },

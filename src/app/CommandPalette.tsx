@@ -81,7 +81,7 @@ export function CommandPalette() {
                 onClick={() => run(i)}
                 className={cn("flex cursor-pointer items-center gap-3 px-4 py-1.5 text-[13px]", i === active ? "bg-hover text-fg" : "text-muted")}
               >
-                <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-faint">{c.section}</span>
+                <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted">{c.section}</span>
                 <span className="flex-1 text-fg">{c.title}</span>
                 {c.shortcut && <KeyboardShortcut keys={shortcutKeys(c.shortcut)} />}
               </li>

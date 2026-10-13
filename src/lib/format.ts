@@ -35,11 +35,16 @@ export function formatPercent(fraction: number, digits = 0): string {
   return `${(fraction * 100).toFixed(digits)}%`;
 }
 
-/** Microseconds since epoch → local "14:22:01.210". */
-export function formatTimestamp(micros: number): string {
+/** Microseconds since epoch → local "14:22:01" or, with milliseconds, "14:22:01.210". */
+export function formatClock(micros: number, withMillis: boolean): string {
   const d = new Date(Math.floor(micros / 1000));
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+  const base = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return withMillis ? `${base}.${p(d.getMilliseconds(), 3)}` : base;
+}
+
+export function formatTimestamp(micros: number): string {
+  return formatClock(micros, true);
 }
 
 /** Microseconds → "8.4s", "2m 05s", "1h 02m". */

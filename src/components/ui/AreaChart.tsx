@@ -68,7 +68,7 @@ export function AreaChart({ series, height = 140, formatValue, startLabel, endLa
         })}
         {index !== null && <line x1={(index / (n - 1)) * W} x2={(index / (n - 1)) * W} y1={0} y2={height} stroke="var(--color-muted)" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="3 3" />}
       </svg>
-      <div className="mt-1 flex justify-between font-mono text-[10px] text-faint">
+      <div className="mt-1 flex justify-between font-mono text-[10px] text-muted">
         <span>{startLabel}</span>
         <span>peak {formatValue(max)}</span>
         <span>{endLabel}</span>

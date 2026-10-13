@@ -79,7 +79,7 @@ export function PacketInspector() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center border-b border-line px-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
-        Packet Details <span className="ml-2 font-mono normal-case text-faint">#{selectedId}</span>
+        Packet Details <span className="ml-2 font-mono normal-case text-muted">#{selectedId}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {detail.sections.map((s) => (

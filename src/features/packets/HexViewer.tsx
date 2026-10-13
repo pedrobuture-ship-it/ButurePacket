@@ -16,7 +16,7 @@ const HexRow = memo(function HexRow({ bytes, row, highlight, top }: { bytes: num
   const slice = bytes.slice(start, start + BYTES_PER_ROW);
   return (
     <div className="absolute left-0 flex w-full whitespace-pre px-2" style={{ transform: `translateY(${top}px)`, height: ROW_H }}>
-      <span className="w-[64px] shrink-0 text-faint">{formatOffset(start)}</span>
+      <span className="w-[64px] shrink-0 text-muted">{formatOffset(start)}</span>
       <span className="w-[316px] shrink-0">
         {slice.map((b, i) => (
           <span key={i} className={cn("inline-block w-[19px]", i === 7 && "mr-2", inRange(start + i, highlight) && "rounded-sm bg-primary text-bg")}>
@@ -46,7 +46,7 @@ export function HexViewer({ bytes, highlight }: Props) {
 
   return (
     <div className="flex h-full min-h-0 flex-col font-mono text-[11px] leading-[18px]">
-      <div className="flex shrink-0 border-b border-line px-2 py-1 text-faint">
+      <div className="flex shrink-0 border-b border-line px-2 py-1 text-muted">
         <span className="w-[64px]">OFFSET</span>
         <span className="w-[316px]">HEX</span>
         <span>ASCII</span>
