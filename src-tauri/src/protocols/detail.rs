@@ -101,7 +101,7 @@ pub fn build_detail(raw: &RawPacket) -> PacketDetail {
     if let Some(s) = transport_section(&d) {
         sections.push(s);
     }
-    sections.push(application_section(&summary));
+    sections.push(application_section(&summary, &d));
     sections.push(payload_section(&d));
     PacketDetail {
         summary,
@@ -379,11 +379,61 @@ fn transport_section(d: &Dissection) -> Option<Section> {
     }
 }
 
-fn application_section(s: &PacketSummary) -> Section {
+fn application_section(s: &PacketSummary, d: &Dissection) -> Section {
+    if let Some(dns) = &d.dns {
+        return dns_section(dns, d);
+    }
     let mut b = SectionBuilder::virt("application", "Application Protocol");
     match &s.application_protocol {
         Some(app) => b.note("Likely protocol", format!("{app} (inferred from port)")),
         None => b.note("Protocol", "Unavailable"),
+    }
+    b.section
+}
+
+fn dns_section(m: &super::dns::Dns, d: &Dissection) -> Section {
+    use super::dns::{rcode_name, type_name};
+    // DNS over TCP has a 2-byte length prefix in front of the message.
+    let base = d.payload_offset
+        + if matches!(d.l4, Some(L4::Tcp(_))) {
+            2
+        } else {
+            0
+        };
+    let mut b = SectionBuilder::new("application", "Domain Name System", base, d.payload_len);
+    b.field("Transaction ID", format!("0x{:04x}", m.id), 0, 2);
+    let kind = if m.is_response { "Response" } else { "Query" };
+    b.field(
+        "Flags",
+        format!("0x{:04x} ({kind}, {})", m.flags, rcode_name(m.rcode)),
+        2,
+        2,
+    );
+    b.field("Questions", m.question_count.to_string(), 4, 2);
+    b.field("Answers", m.answer_count.to_string(), 6, 2);
+    for q in &m.questions {
+        b.field("Query name", q.name.clone(), q.name_offset, q.name_wire_len);
+        b.field(
+            "Query type",
+            type_name(q.qtype),
+            q.name_offset + q.name_wire_len,
+            2,
+        );
+    }
+    for a in &m.answers {
+        b.note(
+            "Answer",
+            format!(
+                "{} {} {} (TTL {} s)",
+                a.name,
+                type_name(a.rtype),
+                a.data.text(),
+                a.ttl
+            ),
+        );
+    }
+    if m.incomplete {
+        b.note("Warning", "Some answers could not be decoded");
     }
     b.section
 }
@@ -486,6 +536,38 @@ mod tests {
                 "payload"
             ]
         );
+    }
+
+    #[test]
+    fn dns_fields_map_to_message_bytes() {
+        use crate::protocols::dns::tests::query;
+        let b = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([10, 0, 0, 1], [8, 8, 8, 8], 64)
+            .udp(5555, 53);
+        let mut data = Vec::new();
+        b.write(&mut data, &query(0x1a2b, "api.github.com", 1))
+            .unwrap();
+        let raw = RawPacket {
+            id: 1,
+            ts_micros: 0,
+            captured_len: data.len() as u32,
+            original_len: data.len() as u32,
+            data,
+        };
+        let d = build_detail(&raw);
+        let app = section(&d, "application");
+        assert_eq!(app.title, "Domain Name System");
+        let id = field(app, "Transaction ID");
+        assert_eq!(&raw.data[id.offset.unwrap()..][..2], &[0x1a, 0x2b]);
+        let name = field(app, "Query name");
+        assert_eq!(name.value, "api.github.com");
+        assert_eq!(
+            &raw.data[name.offset.unwrap()..][..4],
+            &[3, b'a', b'p', b'i']
+        );
+        assert_eq!(name.length, 16);
+        let qt = field(app, "Query type");
+        assert_eq!(&raw.data[qt.offset.unwrap()..][..2], &[0, 1]);
     }
 
     #[test]

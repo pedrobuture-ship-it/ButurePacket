@@ -1,3 +1,4 @@
+use super::dns::{self, Dns};
 use super::error::ParseError;
 use super::ethernet::{self, ETHERTYPE_ARP, ETHERTYPE_IPV4, ETHERTYPE_IPV6, Ethernet};
 use super::ipv4::{self, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP};
@@ -34,6 +35,8 @@ pub struct Dissection {
     pub payload_offset: usize,
     pub payload_len: usize,
     pub fragmented: bool,
+    /// Decoded DNS message when this is DNS over UDP/TCP port 53.
+    pub dns: Option<Dns>,
     pub issues: Vec<ParseError>,
 }
 
@@ -153,8 +156,23 @@ fn dissect_transport(
             let hdr = hdr.min(data.len());
             d.payload_offset = d.l4_offset + hdr;
             d.payload_len = data.len() - hdr;
+            d.dns = decode_dns(&l4, &data[hdr..]);
             d.l4 = Some(l4);
         }
         Err(e) => d.issues.push(e),
+    }
+}
+
+/// DNS over UDP, or over TCP when the whole message fits in this segment (2-byte length prefix).
+fn decode_dns(l4: &L4, payload: &[u8]) -> Option<Dns> {
+    match l4 {
+        L4::Udp(u) if u.src_port == 53 || u.dst_port == 53 => dns::parse(payload).ok(),
+        L4::Tcp(t) if t.src_port == 53 || t.dst_port == 53 => {
+            let len = usize::from(u16::from_be_bytes([*payload.first()?, *payload.get(1)?]));
+            (len > 0 && payload.len() == len + 2)
+                .then(|| dns::parse(&payload[2..]).ok())
+                .flatten()
+        }
+        _ => None,
     }
 }

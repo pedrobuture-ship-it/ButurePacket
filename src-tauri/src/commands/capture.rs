@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use super::error::IpcError;
+use crate::analytics::dns::{DnsStats, DnsTransactionView};
 use crate::capture::{
     CaptureError, CaptureSession, CaptureSink, InterfaceInfo, LiveSource, RawPacket, SessionConfig,
     SessionState, StatsSnapshot, list_interfaces,
@@ -25,6 +26,13 @@ struct StatePayload {
     error: Option<IpcError>,
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DnsPayload {
+    transactions: Vec<DnsTransactionView>,
+    stats: Option<DnsStats>,
+}
+
 struct TauriSink {
     app: AppHandle,
     pipeline: Arc<Pipeline>,
@@ -39,6 +47,15 @@ impl CaptureSink for TauriSink {
         let _ = self.app.emit("capture://packets", out.packets);
         if !out.flows.is_empty() {
             let _ = self.app.emit("capture://flows", out.flows);
+        }
+        if !out.dns.is_empty() || out.dns_stats.is_some() {
+            let _ = self.app.emit(
+                "capture://dns",
+                DnsPayload {
+                    transactions: out.dns,
+                    stats: out.dns_stats,
+                },
+            );
         }
     }
 
@@ -154,4 +171,20 @@ pub fn get_packet_detail(
 #[tauri::command]
 pub fn get_flows(state: State<'_, CaptureState>) -> Vec<FlowView> {
     state.pipeline.flows.lock().unwrap().snapshot()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnsSnapshot {
+    transactions: Vec<DnsTransactionView>,
+    stats: DnsStats,
+}
+
+#[tauri::command]
+pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
+    let dns = state.pipeline.dns.lock().unwrap();
+    DnsSnapshot {
+        transactions: dns.snapshot(),
+        stats: dns.stats(),
+    }
 }

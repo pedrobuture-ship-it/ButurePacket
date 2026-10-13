@@ -93,9 +93,13 @@ pub fn summarize_dissection(packet: &RawPacket, d: &Dissection) -> PacketSummary
         Some(L4::Other(p)) => Some(format!("IP proto {p}")),
         None => None,
     };
-    let application = match (&transport, sport, dport) {
-        (Some(t), Some(s), Some(dst)) => guess_application(t, s, dst).map(str::to_string),
-        _ => None,
+    let application = if d.dns.is_some() {
+        Some("DNS".to_string())
+    } else {
+        match (&transport, sport, dport) {
+            (Some(t), Some(s), Some(dst)) => guess_application(t, s, dst).map(str::to_string),
+            _ => None,
+        }
     };
 
     let mut issues: Vec<String> = d.issues.iter().map(ToString::to_string).collect();
@@ -129,6 +133,7 @@ pub fn summarize_dissection(packet: &RawPacket, d: &Dissection) -> PacketSummary
 fn info_text(d: &Dissection) -> String {
     let tail = if d.fragmented { " [Fragment]" } else { "" };
     let base = match (&d.l3, &d.l4) {
+        _ if d.dns.is_some() => d.dns.as_ref().map(|m| m.describe()).unwrap_or_default(),
         (Some(L3::Arp(a)), _) => a.describe(),
         (_, Some(L4::Tcp(t))) => {
             let mut s = format!(
@@ -223,6 +228,34 @@ mod tests {
         assert_eq!(s.transport_protocol.as_deref(), Some("UDP"));
         assert_eq!(s.application_protocol.as_deref(), Some("DNS"));
         assert_eq!((s.payload_length, s.ttl), (5, Some(32)));
+    }
+
+    #[test]
+    fn dns_packets_are_decoded_in_the_summary() {
+        use crate::protocols::dns::tests::{query, response};
+        let b = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([192, 168, 1, 20], [8, 8, 8, 8], 64)
+            .udp(55321, 53);
+        let mut out = Vec::new();
+        b.write(&mut out, &query(0x1a2b, "api.github.com", 1))
+            .unwrap();
+        let s = summarize(&raw(out));
+        assert_eq!(s.application_protocol.as_deref(), Some("DNS"));
+        assert_eq!(s.info, "Standard query A api.github.com");
+
+        let b = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([8, 8, 8, 8], [192, 168, 1, 20], 64)
+            .udp(53, 55321);
+        let mut out = Vec::new();
+        b.write(
+            &mut out,
+            &response(0x1a2b, "api.github.com", None, &[[140, 82, 121, 4]], 60, 0),
+        )
+        .unwrap();
+        assert_eq!(
+            summarize(&raw(out)).info,
+            "Standard query response A api.github.com 140.82.121.4"
+        );
     }
 
     #[test]

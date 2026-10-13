@@ -3,6 +3,7 @@
 pub mod arp;
 pub mod detail;
 pub mod dissect;
+pub mod dns;
 pub mod error;
 pub mod ethernet;
 pub mod icmp;

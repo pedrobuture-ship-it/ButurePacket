@@ -176,6 +176,21 @@ impl FlowEngine {
         self.flows.get_mut(&id)
     }
 
+    /// Attaches likely domains to a flow (without duplicates) and marks it as changed.
+    pub fn add_domains(&mut self, id: u64, domains: &[String]) {
+        if let Some(f) = self.flows.get_mut(&id) {
+            let before = f.domains.len();
+            for d in domains {
+                if !f.domains.contains(d) {
+                    f.domains.push(d.clone());
+                }
+            }
+            if f.domains.len() != before {
+                self.dirty.insert(id);
+            }
+        }
+    }
+
     /// Flows changed since the previous call, ordered by id.
     pub fn take_changed(&mut self) -> Vec<FlowView> {
         let mut ids: Vec<u64> = self.dirty.drain().collect();
