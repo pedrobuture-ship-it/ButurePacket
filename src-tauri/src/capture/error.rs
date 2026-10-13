@@ -10,7 +10,7 @@ pub enum CaptureError {
     AlreadyRunning,
     #[error("No capture is running.")]
     NotRunning,
-    #[error("Capture backend error: {0}")]
+    #[error("{0}")]
     Backend(String),
     #[error("This file is not a readable capture: {0}")]
     InvalidFile(String),
@@ -35,6 +35,10 @@ impl From<pcap::Error> for CaptureError {
             CaptureError::PermissionDenied
         } else if lower.contains("no such device") {
             CaptureError::InterfaceNotFound(text)
+        } else if lower.contains("not up") || lower.contains("network is down") {
+            CaptureError::Backend("The interface is down. Bring it up and try again.".into())
+        } else if lower.contains("resource busy") {
+            CaptureError::Backend("The interface is busy, possibly used by another capture.".into())
         } else {
             CaptureError::Backend(text)
         }

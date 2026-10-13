@@ -22,6 +22,8 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 commands::storage::clean_scratch(&dir);
                 let state = app.state::<commands::capture::CaptureState>();
+                *state.recent.lock_recover() =
+                    commands::recent::RecentList::load(&dir.join("recent.json"));
                 *state.data_dir.lock_recover() = Some(dir);
             }
             Ok(())
@@ -53,6 +55,9 @@ pub fn run() {
             commands::files::pick_and_save_capture,
             commands::storage::query_stored_packets,
             commands::storage::set_persistence,
+            commands::recent::list_recent_captures,
+            commands::recent::open_recent_capture,
+            commands::recent::forget_recent_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { EmptyState, ResizablePanel } from "@/components/ui";
-import { api, errorMessage } from "@/lib/api";
+import { api } from "@/lib/api";
+import { describeError, type AppError } from "@/lib/errors";
 import { cn } from "@/lib/cn";
 import { sanitizeText } from "@/lib/sanitize";
 import { usePacketsStore } from "@/stores/packets";
@@ -9,7 +10,7 @@ import type { PacketDetail, PacketSection } from "@/types/ipc";
 import { HexViewer } from "./HexViewer";
 import type { ByteRange } from "./hex";
 
-type Load = { id: number; detail: PacketDetail } | { id: number; error: string };
+type Load = { id: number; detail: PacketDetail } | { id: number; error: AppError };
 
 function SectionView({ section, open, onToggle, highlight, onHighlight }: { section: PacketSection; open: boolean; onToggle: () => void; highlight: ByteRange | null; onHighlight: (r: ByteRange | null) => void }) {
   const range = section.offset !== null ? { offset: section.offset, length: section.length } : null;
@@ -64,7 +65,7 @@ export function PacketInspector() {
     api
       .getPacketDetail(selectedId)
       .then((detail) => !cancelled && (setLoad({ id: selectedId, detail }), setHighlight(null)))
-      .catch((e) => !cancelled && setLoad({ id: selectedId, error: errorMessage(e) }));
+      .catch((e) => !cancelled && setLoad({ id: selectedId, error: describeError(e) }));
     return () => {
       cancelled = true;
     };
@@ -72,7 +73,7 @@ export function PacketInspector() {
 
   if (selectedId === null) return <EmptyState title="No packet selected" description="Select a packet to inspect its layers and bytes." />;
   if (!load || load.id !== selectedId) return <EmptyState title="Loading packet…" />;
-  if ("error" in load) return <EmptyState title="Packet unavailable" description={load.error} />;
+  if ("error" in load) return <EmptyState title="Packet unavailable" description={[load.error.message, load.error.hint].filter(Boolean).join(" ")} />;
 
   const { detail } = load;
   return (

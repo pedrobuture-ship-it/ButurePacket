@@ -3,6 +3,7 @@
 pub mod capture;
 pub mod error;
 pub mod files;
+pub mod recent;
 pub mod storage;
 
 use serde::Serialize;

@@ -4,6 +4,7 @@ import { Titlebar } from "@/app/Titlebar";
 import { Workspace } from "@/app/Workspace";
 import { CommandPalette } from "@/app/CommandPalette";
 import { ShortcutsModal } from "@/app/ShortcutsModal";
+import { useGlobalErrorHandlers } from "@/hooks/useGlobalErrorHandlers";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { DropOverlay, Notices, OpenProgressCard } from "@/app/Overlays";
 import { useFileDrop } from "@/hooks/useFileDrop";
@@ -15,6 +16,7 @@ export function App() {
   useFileDrop();
   usePermissionCheck();
   useGlobalShortcuts();
+  useGlobalErrorHandlers();
   return (
     <div className="flex h-full flex-col">
       <Titlebar />

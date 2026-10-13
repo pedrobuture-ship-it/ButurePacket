@@ -9,6 +9,8 @@ export interface AppInfo {
 export interface IpcError {
   kind: string;
   message: string;
+  /** What the user can do about it. */
+  hint?: string | null;
 }
 
 export type SessionState = "idle" | "running" | "paused" | "stopped" | "error";
@@ -339,4 +341,14 @@ export interface PermissionReport {
 export interface NoticePayload {
   tone: "info" | "success" | "warning" | "error";
   text: string;
+}
+
+export interface RecentCapture {
+  id: number;
+  name: string;
+  folder: string;
+  /** Unix milliseconds. */
+  usedAt: number;
+  size: number | null;
+  exists: boolean;
 }

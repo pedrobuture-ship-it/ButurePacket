@@ -1,4 +1,5 @@
 import { api, errorMessage, isIpcError } from "@/lib/api";
+import { notifyError } from "@/lib/notify";
 import { useUiStore } from "@/stores/ui";
 import { formatCount } from "@/lib/format";
 import { useAnalyticsStore } from "@/stores/analytics";
@@ -18,6 +19,7 @@ async function run(action: () => Promise<unknown>) {
     await action();
   } catch (e) {
     st().fail(errorMessage(e));
+    notifyError(e);
     // Missing permission has its own screen with guidance; take the user there.
     if (isIpcError(e) && e.kind === "permissionDenied") useUiStore.getState().setView("capture");
   }
@@ -56,7 +58,7 @@ export const captureActions = {
     try {
       await api.pickAndOpenCapture();
     } catch (e) {
-      notify("error", errorMessage(e));
+      notifyError(e);
     }
   },
   cancelOpen: () => run(api.cancelOpen),
@@ -66,7 +68,7 @@ export const captureActions = {
       if (!r) return;
       notify(r.evicted ? "warning" : "success", r.evicted ? `Saved ${formatCount(r.packets)} packets. Older packets had already been dropped from memory and are not included.` : `Saved ${formatCount(r.packets)} packets.`);
     } catch (e) {
-      notify("error", errorMessage(e));
+      notifyError(e);
     }
   },
 };

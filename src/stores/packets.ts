@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Interner, ListInterner } from "@/lib/intern";
+import { useNoticeStore } from "@/stores/notices";
 import type { PacketSummary } from "@/types/ipc";
 
 const strings = new Interner();
@@ -65,6 +66,7 @@ interface PacketsStore {
 }
 
 let pending = false;
+let warnedAboutCap = false;
 
 export const usePacketsStore = create<PacketsStore>((set) => ({
   count: 0,
@@ -75,6 +77,10 @@ export const usePacketsStore = create<PacketsStore>((set) => ({
     if (packetBuffer.rows.length > MAX_ROWS + TRIM_CHUNK) {
       packetBuffer.rows.splice(0, packetBuffer.rows.length - MAX_ROWS);
       packetBuffer.generation++;
+      if (!warnedAboutCap) {
+        warnedAboutCap = true;
+        useNoticeStore.getState().push("warning", `The packet list keeps the latest ${MAX_ROWS.toLocaleString("en-US")} packets; older rows were removed from the list.`, "Use filters to narrow things down, or save the capture. Flows and analytics are not affected.", "Memory limit");
+      }
     }
     // Coalesce bursts of batches into one render per frame.
     if (pending) return;
@@ -87,6 +93,7 @@ export const usePacketsStore = create<PacketsStore>((set) => ({
     else queueMicrotask(flush);
   },
   clear: () => {
+    warnedAboutCap = false;
     packetBuffer.rows = [];
     strings.clear();
     flagLists.clear();

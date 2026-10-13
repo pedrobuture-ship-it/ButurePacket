@@ -160,6 +160,7 @@ pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
+    super::recent::remember(&app, &validated);
     state.pipeline.clear();
     state.offline_mode.store(true, Ordering::SeqCst);
     super::storage::attach(&app, state, false, &file_name);
@@ -338,9 +339,11 @@ pub async fn pick_and_save_capture(app: AppHandle) -> Result<Option<SaveResult>,
         .into_path()
         .map_err(|e| CaptureError::Io(e.to_string()))?;
     let pipeline = app.state::<CaptureState>().pipeline.clone();
+    let saved_to = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || save_packets(&pipeline, &path))
         .await
         .map_err(|e| CaptureError::Backend(e.to_string()))??;
+    super::recent::remember(&app, &saved_to);
     Ok(Some(result))
 }
 

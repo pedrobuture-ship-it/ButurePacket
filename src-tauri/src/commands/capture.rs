@@ -33,6 +33,8 @@ pub struct CaptureState {
     pub persist: AtomicBool,
     /// Database of the capture currently on screen, for read-only queries.
     pub session_db: Mutex<Option<std::path::PathBuf>>,
+    /// Recently opened/saved files, shown on the Saved Captures screen.
+    pub recent: Mutex<super::recent::RecentList>,
 }
 
 impl Default for CaptureState {
@@ -46,6 +48,7 @@ impl Default for CaptureState {
             data_dir: Mutex::default(),
             persist: AtomicBool::new(true),
             session_db: Mutex::default(),
+            recent: Mutex::default(),
         }
     }
 }
@@ -216,7 +219,9 @@ pub fn capture_start(
     {
         return Err(CaptureError::AlreadyRunning.into());
     }
-    let source = LiveSource::open(&interface)?;
+    let source = LiveSource::open(&interface).map_err(|e| {
+        IpcError::from(e).during(format!("Unable to start capture on {interface}."))
+    })?;
     state.pipeline.clear();
     state
         .offline_mode
@@ -278,6 +283,7 @@ pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u
         .ok_or_else(|| IpcError {
             kind: "packetNotFound".into(),
             message: format!("Packet #{id} is no longer available."),
+            hint: Some("The oldest packets are dropped from memory on very large captures.".into()),
         })
 }
 
@@ -300,6 +306,7 @@ pub fn get_packet_detail(
     store.get(id).map(build_detail).ok_or_else(|| IpcError {
         kind: "packetNotFound".into(),
         message: format!("Packet #{id} is no longer available."),
+        hint: Some("The oldest packets are dropped from memory on very large captures.".into()),
     })
 }
 

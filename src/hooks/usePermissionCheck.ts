@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { usePermissionStore } from "@/stores/permission";
+import { api } from "@/lib/api";
+import { loadPersistSetting } from "@/lib/settings";
 import { useNoticeStore } from "@/stores/notices";
 
 /** Checks capture permission once at startup and points the user to help if it is missing. */
 export function usePermissionCheck() {
   useEffect(() => {
+    // Re-apply the saved storage preference to the backend, which starts with the default.
+    if (!loadPersistSetting()) api.setPersistence(false).catch(() => undefined);
     void usePermissionStore
       .getState()
       .check()

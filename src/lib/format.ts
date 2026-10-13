@@ -58,3 +58,13 @@ export function formatLatency(micros: number | null): string {
   const ms = micros / 1000;
   return `${ms >= 100 ? ms.toFixed(0) : ms.toFixed(1).replace(/\.0$/, "")} ms`;
 }
+
+/** "just now", "5 min ago", "3 h ago", "2 d ago", else a date. */
+export function formatAgo(ms: number, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 45) return "just now";
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+  if (s < 86_400) return `${Math.round(s / 3600)} h ago`;
+  if (s < 7 * 86_400) return `${Math.round(s / 86_400)} d ago`;
+  return new Date(ms).toLocaleDateString("en-GB");
+}

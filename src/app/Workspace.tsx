@@ -1,6 +1,9 @@
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
 import { AnalyticsView } from "@/features/analytics/AnalyticsView";
+import { SavedView } from "@/features/saved/SavedView";
+import { SettingsView } from "@/features/settings/SettingsView";
 import { CaptureView } from "@/features/capture/CaptureView";
 import { DnsView } from "@/features/dns/DnsView";
 import { FlowsView } from "@/features/flows/FlowsView";
@@ -32,6 +35,7 @@ export function Workspace() {
     <main className="flex min-w-0 flex-1 flex-col bg-bg">
       {filterable.includes(view) && <FilterBar />}
       <div className="min-h-0 flex-1" key={view}>
+        <ErrorBoundary label={titles[view]} resetKey={view}>
         {view === "overview" ? (
           <OverviewView />
         ) : view === "capture" ? (
@@ -48,9 +52,14 @@ export function Workspace() {
           <TimelineView />
         ) : view === "analytics" ? (
           <AnalyticsView />
+        ) : view === "saved" ? (
+          <SavedView />
+        ) : view === "settings" ? (
+          <SettingsView />
         ) : (
           <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
         )}
+        </ErrorBoundary>
       </div>
     </main>
   );

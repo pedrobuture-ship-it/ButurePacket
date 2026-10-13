@@ -46,3 +46,16 @@ describe("formatSpan / formatLatency", () => {
     expect(formatLatency(250_000)).toBe("250 ms");
   });
 });
+
+import { formatAgo } from "./format";
+
+describe("formatAgo", () => {
+  const now = 1_700_000_000_000;
+  it("uses coarse relative units", () => {
+    expect(formatAgo(now - 10_000, now)).toBe("just now");
+    expect(formatAgo(now - 5 * 60_000, now)).toBe("5 min ago");
+    expect(formatAgo(now - 3 * 3_600_000, now)).toBe("3 h ago");
+    expect(formatAgo(now - 2 * 86_400_000, now)).toBe("2 d ago");
+    expect(formatAgo(now + 5_000, now)).toBe("just now"); // clock skew never goes negative
+  });
+});

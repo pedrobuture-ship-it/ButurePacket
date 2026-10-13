@@ -60,7 +60,11 @@ export function Notices() {
     <div role="log" aria-live="polite" className="fixed bottom-10 right-4 z-50 flex w-[360px] flex-col gap-2">
       {notices.map((n) => (
         <div key={n.id} role={n.tone === "error" ? "alert" : "status"} className={cn("flex items-start gap-2 rounded border bg-raised px-3 py-2 text-xs shadow-xl animate-slide-in", TONE[n.tone])}>
-          <p className="flex-1 select-text text-fg">{n.text}</p>
+          <div className="flex-1 select-text">
+            {n.title && <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">{n.title}</p>}
+            <p className="text-fg">{n.text}</p>
+            {n.hint && <p className="mt-1 text-muted">{n.hint}</p>}
+          </div>
           <IconButton label="Dismiss" className="h-5 w-5" onClick={() => dismiss(n.id)}>
             <X size={12} />
           </IconButton>

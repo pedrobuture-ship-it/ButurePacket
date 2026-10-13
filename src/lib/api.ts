@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AnalyticsSnapshot, AppInfo, NoticePayload, OpenProgress, PacketPage, PermissionReport, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
+import type { AnalyticsSnapshot, AppInfo, NoticePayload, OpenProgress, PacketPage, PermissionReport, RecentCapture, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
 import type { CaptureStats, InterfaceInfo } from "@/types/capture";
 
 /** Every backend command is declared here: name → [args, result]. */
@@ -24,6 +24,9 @@ interface Commands {
   cancel_open: [Record<string, never>, void];
   query_stored_packets: [{ query: StoredPacketQuery }, PacketPage];
   set_persistence: [{ enabled: boolean }, void];
+  list_recent_captures: [Record<string, never>, RecentCapture[]];
+  open_recent_capture: [{ id: number }, void];
+  forget_recent_capture: [{ id: number | null }, void];
   get_dns: [Record<string, never>, { transactions: DnsTransaction[]; stats: DnsStats }];
 }
 
@@ -82,6 +85,9 @@ export const api = {
   checkCapturePermission: () => call("check_capture_permission", {}),
   cancelOpen: () => call("cancel_open", {}),
   queryStoredPackets: (query: StoredPacketQuery) => call("query_stored_packets", { query }),
+  listRecentCaptures: () => call("list_recent_captures", {}),
+  openRecentCapture: (id: number) => call("open_recent_capture", { id }),
+  forgetRecentCapture: (id: number | null) => call("forget_recent_capture", { id }),
   setPersistence: (enabled: boolean) => call("set_persistence", { enabled }),
   getAnalytics: () => call("get_analytics", {}),
   getEvents: () => call("get_events", {}),

@@ -5,6 +5,7 @@ import { formatCount } from "@/lib/format";
 import { useNoticeStore } from "@/stores/notices";
 import { useStorageStore } from "@/stores/storage";
 import { resetViews } from "@/lib/captureActions";
+import { notifyError } from "@/lib/notify";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useDnsStore } from "@/stores/dns";
 import { useEventsStore } from "@/stores/events";
@@ -26,13 +27,19 @@ export function useCaptureEvents() {
   useEffect(() => {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
-      on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://stats", (s) => {
+        // First drops of a session: the buffer between capture and analysis is full or the kernel overflowed.
+        if (s.dropped > 0 && useCaptureStore.getState().stats.dropped === 0) {
+          useNoticeStore.getState().push("warning", "Packets are being dropped because the capture cannot keep up with the traffic.", "Close busy applications, capture on a less busy interface, or stop and review what was captured so far.", "Memory limit");
+        }
+        store.applyStats(s);
+      }),
       on("capture://notice", (n) => useNoticeStore.getState().push(n.tone, n.text)),
       on("capture://storage", (s) => {
         const notify = useNoticeStore.getState().push;
         const prev = useStorageStore.getState().status;
         useStorageStore.getState().set(s);
-        if (s.error && s.error !== prev.error) notify("error", `Could not store this capture on disk: ${s.error}`);
+        if (s.error && s.error !== prev.error) notifyError({ kind: "storage", message: `Could not store this capture on disk: ${s.error}`, hint: "The capture keeps working; it just will not be saved to the capture database." });
         else if (s.limitReached && !prev.limitReached) notify("warning", "The capture database reached its size limit. New packets are still analysed live but are no longer stored.");
         else if (s.droppedJobs > 0 && prev.droppedJobs === 0) notify("warning", "Storage cannot keep up with the packet rate; some packets are not being stored.");
       }),
@@ -52,7 +59,7 @@ export function useCaptureEvents() {
         if (p.error) {
           store.setMode("live");
           store.setState("idle");
-          notify("error", p.error.message);
+          notifyError(p.error);
           return;
         }
         store.setState("idle");
