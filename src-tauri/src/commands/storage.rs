@@ -12,6 +12,7 @@ use super::capture::CaptureState;
 use super::error::IpcError;
 use crate::capture::CaptureError;
 use crate::pipeline::Pipeline;
+use crate::protocols::PacketSummary;
 use crate::storage::database::Database;
 use crate::storage::packets::{PacketQuery, count_packets, query_packets};
 use crate::storage::writer::{StorageConfig, StorageStatus};
@@ -102,7 +103,12 @@ pub fn attach(app: &AppHandle, state: &CaptureState, live: bool, source: &str) {
 
 /// Flushes and closes the session database and reports the final state.
 pub fn detach(app: &AppHandle, state: &CaptureState) {
-    if let Some(result) = state.pipeline.detach_storage() {
+    detach_pipeline(app, &state.pipeline);
+}
+
+/// Same as [`detach`], for callers that only hold the pipeline (capture sinks).
+pub fn detach_pipeline(app: &AppHandle, pipeline: &Pipeline) {
+    if let Some(result) = pipeline.detach_storage() {
         let payload = match result {
             Ok(status) => StoragePayload {
                 status,
@@ -120,32 +126,36 @@ pub fn detach(app: &AppHandle, state: &CaptureState) {
     }
 }
 
-fn session_db(state: &CaptureState) -> Result<Database, CaptureError> {
-    let path =
-        state.session_db.lock_recover().clone().ok_or_else(|| {
-            CaptureError::Storage("there is no stored capture to search yet".into())
-        })?;
-    Database::open(&path)
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PacketPage {
-    packets: Vec<crate::protocols::PacketSummary>,
+    packets: Vec<PacketSummary>,
     /// Matching rows overall (ignores paging).
     total: u64,
 }
 
-/// Searches the full stored capture by indexed fields, independent of what the UI list holds.
+/// Searches the whole stored capture by indexed fields, independent of what the UI list holds.
 #[tauri::command]
-pub fn query_stored_packets(
+pub async fn query_stored_packets(
     state: State<'_, CaptureState>,
     query: PacketQuery,
 ) -> Result<PacketPage, IpcError> {
-    let db = session_db(&state)?;
-    let packets = query_packets(&db, &query)?;
-    let total = count_packets(&db, &query)?;
-    Ok(PacketPage { packets, total })
+    let path =
+        state.session_db.lock_recover().clone().ok_or_else(|| {
+            CaptureError::Storage("there is no stored capture to search yet".into())
+        })?;
+    // A separate read-only connection: searches never wait for the writer, and the writer's
+    // WAL lets both proceed.
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = Database::open(&path)?;
+        Ok::<_, CaptureError>(PacketPage {
+            packets: query_packets(&db, &query)?,
+            total: count_packets(&db, &query)?,
+        })
+    })
+    .await
+    .map_err(|e| IpcError::from(CaptureError::Backend(e.to_string())))?
+    .map_err(IpcError::from)
 }
 
 #[tauri::command]

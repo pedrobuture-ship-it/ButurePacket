@@ -352,3 +352,21 @@ export interface RecentCapture {
   size: number | null;
   exists: boolean;
 }
+
+/** Filters for searching the stored capture; every field maps to an indexed column. */
+export interface StoredPacketQuery {
+  ip?: string;
+  srcIp?: string;
+  dstIp?: string;
+  protocol?: string;
+  flowId?: number;
+  domain?: string;
+  afterId?: number;
+  limit?: number;
+}
+
+export interface PacketPage {
+  packets: PacketSummary[];
+  /** Matching rows in the whole stored capture. */
+  total: number;
+}

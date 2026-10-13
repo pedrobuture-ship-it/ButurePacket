@@ -270,12 +270,15 @@ fn only_changed_flows_are_reported() {
     other.src.port = 6000;
     let b = e.observe(&other);
     assert_eq!(
-        e.take_changed().iter().map(|f| f.id).collect::<Vec<_>>(),
+        e.take_changed(usize::MAX)
+            .iter()
+            .map(|f| f.id)
+            .collect::<Vec<_>>(),
         vec![a, b]
     );
-    assert!(e.take_changed().is_empty());
+    assert!(e.take_changed(usize::MAX).is_empty());
     e.observe(&udp(5, false, 1));
-    let changed = e.take_changed();
+    let changed = e.take_changed(usize::MAX);
     assert_eq!(changed.len(), 1);
     assert_eq!(changed[0].id, a);
     assert_eq!(changed[0].packets_b_to_a, 1);
@@ -375,4 +378,122 @@ fn builds_input_from_real_frames() {
         data: vec![1, 2, 3],
     };
     assert!(FlowInput::from_dissection(&junk, &dissect(&junk.data)).is_none());
+}
+
+#[test]
+fn syn_after_close_starts_a_new_flow_but_stray_packets_do_not() {
+    let mut e = FlowEngine::default();
+    let first = handshake(&mut e, 0);
+    e.observe(&tcp(SEC, true, FIN | ACK, 1001, 5001, 0));
+    e.observe(&tcp(SEC + 10, false, FIN | ACK, 5001, 1002, 0));
+    assert_eq!(e.get(first).unwrap().tcp_state, Some(TcpState::Closed));
+    // a late ACK of the old connection stays in the old flow
+    assert_eq!(e.observe(&tcp(SEC + 20, true, ACK, 1002, 5002, 0)), first);
+    // a brand new SYN on the same 5-tuple is a new conversation
+    let second = e.observe(&tcp(10 * SEC, true, SYN, 77_000, 0, 0));
+    assert_ne!(second, first);
+    assert_eq!(e.get(second).unwrap().tcp_state, Some(TcpState::SynSent));
+    assert_eq!(e.get(second).unwrap().packets_a_to_b, 1);
+    // the finished flow is left untouched
+    assert_eq!(e.get(first).unwrap().tcp_state, Some(TcpState::Closed));
+    assert_eq!(e.len(), 2);
+    // and later traffic follows the new flow
+    assert_eq!(
+        e.observe(&tcp(10 * SEC + 1, false, SYN | ACK, 9, 77_001, 0)),
+        second
+    );
+}
+
+#[test]
+fn syn_after_reset_starts_a_new_flow_and_retransmitted_syn_does_not() {
+    let mut e = FlowEngine::default();
+    let first = e.observe(&tcp(0, true, SYN, 1000, 0, 0));
+    assert_eq!(e.observe(&tcp(SEC, true, SYN, 1000, 0, 0)), first); // retransmission, still connecting
+    e.observe(&tcp(2 * SEC, false, RST | ACK, 0, 1001, 0));
+    assert_eq!(e.get(first).unwrap().tcp_state, Some(TcpState::Reset));
+    assert_ne!(e.observe(&tcp(3 * SEC, true, SYN, 5000, 0, 0)), first);
+}
+
+#[test]
+fn udp_after_a_long_silence_is_a_new_conversation() {
+    let mut e = FlowEngine::default();
+    let a = e.observe(&udp(0, true, 10));
+    assert_eq!(e.observe(&udp(60 * SEC, false, 10)), a); // within the idle gap
+    let b = e.observe(&udp(60 * SEC + 121 * SEC, true, 10));
+    assert_ne!(a, b);
+    assert_eq!(e.get(b).unwrap().total_packets(), 1);
+    assert_eq!(e.get(a).unwrap().total_packets(), 2);
+    // a late-arriving old timestamp doesn't spawn flows
+    assert_eq!(e.observe(&udp(0, true, 10)), b);
+}
+
+#[test]
+fn evicting_an_old_flow_does_not_unmap_the_newer_flow_with_the_same_tuple() {
+    let mut e = FlowEngine::new(3);
+    let old = e.observe(&udp(0, true, 10));
+    let newer = e.observe(&udp(200 * SEC, true, 10)); // same tuple after the idle gap
+    assert_ne!(old, newer);
+    for port in 0..2u16 {
+        let mut other = udp(300 * SEC, true, 1);
+        other.src.port = 7000 + port;
+        e.observe(&other);
+    }
+    // the table was full: the oldest flow (`old`) is gone, `newer` is still reachable by its tuple
+    assert!(e.get(old).is_none());
+    assert_eq!(e.observe(&udp(301 * SEC, true, 10)), newer);
+}
+
+#[test]
+fn drains_are_capped_and_resume_where_they_left_off() {
+    let mut e = FlowEngine::default();
+    for port in 0..25u16 {
+        let mut p = udp(0, true, 1);
+        p.src.port = 1000 + port;
+        e.observe(&p);
+    }
+    let first = e.take_changed(10);
+    let second = e.take_changed(10);
+    let third = e.take_changed(10);
+    assert_eq!((first.len(), second.len(), third.len()), (10, 10, 5));
+    assert!(e.take_changed(10).is_empty());
+    let mut ids: Vec<u64> = [first, second, third]
+        .concat()
+        .iter()
+        .map(|f| f.id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, (1..=25).collect::<Vec<_>>());
+}
+
+#[test]
+fn packets_with_unreadable_transport_headers_get_no_flow() {
+    use etherparse::PacketBuilder;
+    let b = PacketBuilder::ethernet2([1; 6], [2; 6])
+        .ipv4([10, 0, 0, 1], [10, 0, 0, 2], 64)
+        .tcp(40000, 80, 1, 1000);
+    let mut full = vec![];
+    b.write(&mut full, &[]).unwrap();
+    for cut in [full.len() - 1, 14 + 20 + 5, 14 + 20 + 1] {
+        let data = full[..cut].to_vec();
+        let raw = RawPacket {
+            id: 1,
+            ts_micros: 0,
+            captured_len: cut as u32,
+            original_len: full.len() as u32,
+            data,
+        };
+        assert!(
+            FlowInput::from_dissection(&raw, &dissect(&raw.data)).is_none(),
+            "cut at {cut}"
+        );
+    }
+    // a complete header is still tracked
+    let raw = RawPacket {
+        id: 1,
+        ts_micros: 0,
+        captured_len: full.len() as u32,
+        original_len: full.len() as u32,
+        data: full,
+    };
+    assert!(FlowInput::from_dissection(&raw, &dissect(&raw.data)).is_some());
 }

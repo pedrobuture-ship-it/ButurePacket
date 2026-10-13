@@ -9,6 +9,7 @@ import { useEventsStore } from "@/stores/events";
 import { useFlowsStore } from "@/stores/flows";
 import { useNoticeStore } from "@/stores/notices";
 import { EMPTY_STORAGE, useStorageStore } from "@/stores/storage";
+import { useStoredSearch } from "@/stores/storedSearch";
 import { usePacketsStore } from "@/stores/packets";
 
 const st = () => useCaptureStore.getState();
@@ -34,6 +35,7 @@ export function resetViews() {
   useEventsStore.getState().clear();
   useAnalyticsStore.getState().reset();
   useStorageStore.getState().set(EMPTY_STORAGE);
+  useStoredSearch.getState().reset();
 }
 
 /** User-triggered capture operations. State changes arrive back via backend events. */

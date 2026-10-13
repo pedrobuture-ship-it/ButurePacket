@@ -8,7 +8,8 @@ import { useUiStore } from "@/stores/ui";
 import type { PacketSummary } from "@/types/ipc";
 import { PACKET_COLUMNS, PacketRow, ROW_HEIGHT } from "./PacketRow";
 import { endpoint, packetToText } from "./packetText";
-import { filterProgress, makePacketView } from "./packetView";
+import { useStoredSearch } from "@/stores/storedSearch";
+import { filterProgress, makePacketView, makeStoredView } from "./packetView";
 
 const HEADERS = ["#", "Time", "Source", "Destination", "Protocol", "Src Port", "Dst Port", "Length", "Info"];
 const FOLLOW_THRESHOLD = ROW_HEIGHT * 2;
@@ -33,7 +34,8 @@ export function PacketTable() {
     const h = setTimeout(() => setTick((t) => t + 1), 0);
     return () => clearTimeout(h);
   }, [progress, tick]);
-  const view = useMemo(() => makePacketView(progress.indices, rowCount), [progress, rowCount]);
+  const stored = useStoredSearch((s) => (s.enabled ? s.rows : null));
+  const view = useMemo(() => (stored ? makeStoredView(stored) : makePacketView(progress.indices, rowCount)), [stored, progress, rowCount]);
   const count = view.count;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,8 +59,8 @@ export function PacketTable() {
 
   // Stay glued to the newest packet while following.
   useLayoutEffect(() => {
-    if (follow) scrollToBottom();
-  }, [count, follow, scrollToBottom]);
+    if (follow && !stored) scrollToBottom();
+  }, [count, follow, stored, scrollToBottom]);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -137,7 +139,7 @@ export function PacketTable() {
   );
 
   const lastVisible = virtualizer.range?.endIndex ?? count - 1;
-  const unseen = follow ? 0 : Math.max(0, count - 1 - lastVisible);
+  const unseen = follow || stored ? 0 : Math.max(0, count - 1 - lastVisible);
 
   return (
     <div role="table" aria-label="Packets" aria-rowcount={count} className="relative flex h-full min-h-0 flex-col">
@@ -150,7 +152,7 @@ export function PacketTable() {
       </div>
       <div ref={scrollRef} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none" style={{ scrollbarGutter: "stable" }}>
         {count === 0 ? (
-          <EmptyState title={filtered && rowCount > 0 ? "No packets match the filter" : "No packets yet"} description={filtered && rowCount > 0 ? "Adjust or clear the filter to see more traffic." : "Start a capture on an interface or open a PCAP file to see traffic here."} />
+          <EmptyState title={stored ? "No stored packets match" : filtered && rowCount > 0 ? "No packets match the filter" : "No packets yet"} description={stored ? "Nothing in the stored capture matches this filter." : filtered && rowCount > 0 ? "Adjust or clear the filter to see more traffic." : "Start a capture on an interface or open a PCAP file to see traffic here."} />
         ) : (
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((v) => {
@@ -161,7 +163,7 @@ export function PacketTable() {
           </div>
         )}
       </div>
-      {!progress.done && (
+      {!stored && !progress.done && (
         <div role="status" className="absolute right-4 top-9 rounded border border-line-strong bg-raised px-2 py-1 font-mono text-[11px] text-muted">
           Filtering… {Math.floor((progress.processed / Math.max(1, rowCount)) * 100)}%
         </div>

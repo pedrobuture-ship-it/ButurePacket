@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AnalyticsSnapshot, AppInfo, NoticePayload, OpenProgress, PacketPage, PermissionReport, RecentCapture, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
+import type { AnalyticsSnapshot, AppInfo, NoticePayload, OpenProgress, PacketPage, PermissionReport, RecentCapture, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
 import type { CaptureStats, InterfaceInfo } from "@/types/capture";
 
 /** Every backend command is declared here: name → [args, result]. */
@@ -11,13 +11,9 @@ interface Commands {
   capture_pause: [Record<string, never>, void];
   capture_resume: [Record<string, never>, void];
   capture_stop: [Record<string, never>, void];
-  get_packet_bytes: [{ id: number }, number[]];
   clear_capture: [Record<string, never>, void];
   get_packet_detail: [{ id: number }, PacketDetail];
-  get_flows: [Record<string, never>, FlowView[]];
   get_flow: [{ id: number }, FlowView | null];
-  get_events: [Record<string, never>, TimelineEvent[]];
-  get_analytics: [Record<string, never>, AnalyticsSnapshot];
   pick_and_open_capture: [Record<string, never>, string | null];
   pick_and_save_capture: [Record<string, never>, SaveResult | null];
   check_capture_permission: [Record<string, never>, PermissionReport];
@@ -27,7 +23,6 @@ interface Commands {
   list_recent_captures: [Record<string, never>, RecentCapture[]];
   open_recent_capture: [{ id: number }, void];
   forget_recent_capture: [{ id: number | null }, void];
-  get_dns: [Record<string, never>, { transactions: DnsTransaction[]; stats: DnsStats }];
 }
 
 /** Backend → frontend events: name → payload. */
@@ -77,8 +72,6 @@ export const api = {
   capturePause: () => call("capture_pause", {}),
   captureResume: () => call("capture_resume", {}),
   captureStop: () => call("capture_stop", {}),
-  getPacketBytes: (id: number) => call("get_packet_bytes", { id }),
-  getDns: () => call("get_dns", {}),
   /** Native file dialog + analysis; the web view never supplies a path. */
   pickAndOpenCapture: () => call("pick_and_open_capture", {}),
   pickAndSaveCapture: () => call("pick_and_save_capture", {}),
@@ -89,10 +82,7 @@ export const api = {
   openRecentCapture: (id: number) => call("open_recent_capture", { id }),
   forgetRecentCapture: (id: number | null) => call("forget_recent_capture", { id }),
   setPersistence: (enabled: boolean) => call("set_persistence", { enabled }),
-  getAnalytics: () => call("get_analytics", {}),
-  getEvents: () => call("get_events", {}),
   getFlow: (id: number) => call("get_flow", { id }),
-  getFlows: () => call("get_flows", {}),
   getPacketDetail: (id: number) => call("get_packet_detail", { id }),
   clearCapture: () => call("clear_capture", {}),
 };

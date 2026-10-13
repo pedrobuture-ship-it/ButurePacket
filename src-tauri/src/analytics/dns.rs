@@ -448,8 +448,12 @@ impl DnsTracker {
         }
     }
 
-    pub fn take_changed(&mut self) -> Vec<DnsTransactionView> {
-        let mut ids: Vec<u64> = self.dirty.drain().collect();
+    /// Up to `limit` changed transactions; the rest stay queued for the next call.
+    pub fn take_changed(&mut self, limit: usize) -> Vec<DnsTransactionView> {
+        let mut ids: Vec<u64> = self.dirty.iter().copied().take(limit).collect();
+        for id in &ids {
+            self.dirty.remove(id);
+        }
         ids.sort_unstable();
         ids.iter()
             .filter_map(|id| self.txn_ref(*id))
@@ -583,7 +587,7 @@ mod tests {
             &[[140, 82, 121, 5]],
             0,
         );
-        let v = t.take_changed();
+        let v = t.take_changed(usize::MAX);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].latency, Some(21 * MS));
         assert_eq!(v[0].status, DnsStatus::Ok);
@@ -742,12 +746,12 @@ mod tests {
     fn only_changes_are_reported() {
         let mut t = DnsTracker::new();
         send_query(&mut t, 0, 1, "a.example");
-        assert_eq!(t.take_changed().len(), 1);
-        assert!(t.take_changed().is_empty());
+        assert_eq!(t.take_changed(usize::MAX).len(), 1);
+        assert!(t.take_changed(usize::MAX).is_empty());
         assert!(t.take_stats_if_changed().is_some());
         assert!(t.take_stats_if_changed().is_none());
         send_response(&mut t, 10, 1, "a.example", &[[1, 1, 1, 1]], 0);
-        assert_eq!(t.take_changed().len(), 1);
+        assert_eq!(t.take_changed(usize::MAX).len(), 1);
     }
 
     #[test]

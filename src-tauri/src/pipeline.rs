@@ -10,7 +10,7 @@ use crate::analytics::metrics::{AnalyticsSnapshot, MetricsEngine};
 use crate::analytics::tls::TlsTracker;
 use crate::capture::CaptureError;
 use crate::capture::RawPacket;
-use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, Proto};
+use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, MAX_FLOWS_PER_DRAIN, Proto};
 use crate::protocols::{PacketSummary, dissect, summary::summarize_dissection};
 use crate::storage::database::Database;
 use crate::storage::memory::PacketStore;
@@ -45,6 +45,8 @@ impl Updates {
 
 /// Upper bound on events pushed to the UI per batch (the full history stays in memory).
 const MAX_EVENTS_PER_BATCH: usize = 5_000;
+/// Cap on DNS transactions per drain (flows use `MAX_FLOWS_PER_DRAIN`).
+const MAX_DNS_PER_DRAIN: usize = 2_000;
 
 #[derive(Default)]
 pub struct Pipeline {
@@ -137,8 +139,8 @@ impl Pipeline {
         let mut flows = self.flows.lock_recover();
         let mut dns = self.dns.lock_recover();
         let mut events = self.events.lock_recover();
-        let changed = flows.take_changed();
-        let dns_changed = dns.take_changed();
+        let changed = flows.take_changed(MAX_FLOWS_PER_DRAIN);
+        let dns_changed = dns.take_changed(MAX_DNS_PER_DRAIN);
         let dns_stats = dns.take_stats_if_changed();
         events.dns_changed(&dns_changed);
         let mut new_events = events.take_new();

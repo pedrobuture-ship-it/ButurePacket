@@ -8,7 +8,6 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::error::IpcError;
 use crate::analytics::dns::{DnsStats, DnsTransactionView};
-use crate::analytics::events::TimelineEvent;
 use crate::capture::{
     CaptureError, CaptureSession, CaptureSink, InterfaceInfo, LiveSource, RawPacket, SessionConfig,
     SessionState, StatsSnapshot, list_interfaces,
@@ -31,10 +30,10 @@ pub struct CaptureState {
     pub data_dir: Mutex<Option<std::path::PathBuf>>,
     /// Persist captures to the scratch database (on by default).
     pub persist: AtomicBool,
-    /// Database of the capture currently on screen, for read-only queries.
-    pub session_db: Mutex<Option<std::path::PathBuf>>,
     /// Recently opened/saved files, shown on the Saved Captures screen.
     pub recent: Mutex<super::recent::RecentList>,
+    /// Database of the capture on screen, opened read-only for searches.
+    pub session_db: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl Default for CaptureState {
@@ -47,19 +46,70 @@ impl Default for CaptureState {
             offline_mode: AtomicBool::default(),
             data_dir: Mutex::default(),
             persist: AtomicBool::new(true),
-            session_db: Mutex::default(),
             recent: Mutex::default(),
+            session_db: Mutex::default(),
         }
+    }
+}
+
+fn session_active(slot: &Option<CaptureSession>) -> bool {
+    slot.as_ref()
+        .is_some_and(|s| matches!(s.state(), SessionState::Running | SessionState::Paused))
+}
+
+/// Marks a file import as running and clears the mark again when dropped, however the import
+/// ends (finished, failed, panicked, or never started).
+pub struct ImportGuard(Arc<AtomicBool>);
+
+impl Drop for ImportGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
 impl CaptureState {
     /// A live capture is running or paused.
     pub fn live_active(&self) -> bool {
-        self.session
-            .lock_recover()
-            .as_ref()
-            .is_some_and(|s| matches!(s.state(), SessionState::Running | SessionState::Paused))
+        session_active(&self.session.lock_recover())
+    }
+
+    /// Claims the right to import a file. Live capture and imports exclude each other: the check
+    /// and the claim happen under the session lock, the same lock `capture_start` holds.
+    pub fn begin_import(&self) -> Result<ImportGuard, CaptureError> {
+        let slot = self.session.lock_recover();
+        if session_active(&slot) {
+            return Err(CaptureError::Busy(
+                "Stop the current capture before opening a file.".into(),
+            ));
+        }
+        self.offline_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| {
+                CaptureError::Busy(
+                    "Wait for the open file to finish, or cancel it, before opening another."
+                        .into(),
+                )
+            })?;
+        Ok(ImportGuard(self.offline_running.clone()))
+    }
+
+    /// Fails with `Busy` while a file is being imported.
+    pub fn ensure_no_import(&self) -> Result<(), CaptureError> {
+        if self
+            .offline_running
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            Err(CaptureError::Busy(
+                "A file is being opened. Wait for it to finish or cancel it first.".into(),
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -188,6 +238,8 @@ impl CaptureSink for TauriSink {
         if matches!(state, SessionState::Stopped | SessionState::Error) {
             // Whatever accumulated since the last push must reach the UI before it goes idle.
             emit_updates(&self.app, self.pipeline.drain_updates());
+            // The capture is over, however it ended: flush and close its database.
+            super::storage::detach_pipeline(&self.app, &self.pipeline);
         }
         let _ = self.app.emit(
             "capture://state",
@@ -211,6 +263,7 @@ pub fn capture_start(
     interface: String,
 ) -> Result<(), IpcError> {
     let mut slot = state.session.lock_recover();
+    state.ensure_no_import()?;
     if let Some(existing) = slot.as_ref()
         && matches!(
             existing.state(),
@@ -273,27 +326,15 @@ pub fn capture_stop(app: AppHandle, state: State<'_, CaptureState>) -> Result<()
     Ok(())
 }
 
-/// Raw bytes of one packet, fetched only when the UI asks (inspector / hex view).
 #[tauri::command]
-pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u8>, IpcError> {
-    let store = state.pipeline.store.lock_recover();
-    store
-        .get(id)
-        .map(|p| p.data.clone())
-        .ok_or_else(|| IpcError {
-            kind: "packetNotFound".into(),
-            message: format!("Packet #{id} is no longer available."),
-            hint: Some("The oldest packets are dropped from memory on very large captures.".into()),
-        })
-}
-
-#[tauri::command]
-pub fn clear_capture(app: AppHandle, state: State<'_, CaptureState>) {
+pub fn clear_capture(app: AppHandle, state: State<'_, CaptureState>) -> Result<(), IpcError> {
+    state.ensure_no_import()?;
     super::storage::detach(&app, &state);
     state.pipeline.clear();
     state
         .offline_mode
         .store(false, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
 }
 
 /// Layered, byte-mapped decode of one packet for the inspector.
@@ -310,41 +351,6 @@ pub fn get_packet_detail(
     })
 }
 
-#[tauri::command]
-pub fn get_flows(state: State<'_, CaptureState>) -> Vec<FlowView> {
-    state.pipeline.flows.lock_recover().snapshot()
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DnsSnapshot {
-    transactions: Vec<DnsTransactionView>,
-    stats: DnsStats,
-}
-
-#[tauri::command]
-pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
-    let dns = state.pipeline.dns.lock_recover();
-    DnsSnapshot {
-        transactions: dns.snapshot(),
-        stats: dns.stats(),
-    }
-}
-
-#[tauri::command]
-pub fn get_events(state: State<'_, CaptureState>) -> Vec<TimelineEvent> {
-    state.pipeline.events.lock_recover().snapshot()
-}
-
-#[tauri::command]
-pub fn get_analytics(
-    state: State<'_, CaptureState>,
-) -> crate::analytics::metrics::AnalyticsSnapshot {
-    state
-        .pipeline
-        .analytics(state.offline_mode.load(std::sync::atomic::Ordering::SeqCst))
-}
-
 /// Whether live capture is permitted, with guidance when it is not. Read-only: nothing is elevated.
 #[tauri::command]
 pub async fn check_capture_permission()
@@ -358,4 +364,68 @@ pub async fn check_capture_permission()
 #[tauri::command]
 pub fn get_flow(state: State<'_, CaptureState>, id: u64) -> Option<FlowView> {
     state.pipeline.flow_detail(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::session::tests::{MockSource, TestSink};
+    use std::collections::VecDeque;
+
+    fn live_session() -> CaptureSession {
+        let source = MockSource {
+            packets: VecDeque::new(),
+            finite: false,
+            fail_with: None,
+        };
+        CaptureSession::start(
+            Box::new(source),
+            Arc::new(TestSink::default()),
+            SessionConfig::default(),
+        )
+    }
+
+    #[test]
+    fn only_one_import_at_a_time_and_the_claim_is_released_on_drop() {
+        let state = CaptureState::default();
+        let first = state.begin_import().unwrap();
+        assert!(matches!(state.begin_import(), Err(CaptureError::Busy(_))));
+        assert!(matches!(
+            state.ensure_no_import(),
+            Err(CaptureError::Busy(_))
+        ));
+        drop(first);
+        assert!(state.ensure_no_import().is_ok());
+        assert!(state.begin_import().is_ok());
+    }
+
+    #[test]
+    fn a_panicking_import_still_releases_the_claim() {
+        let state = Arc::new(CaptureState::default());
+        let guard = state.begin_import().unwrap();
+        let t = std::thread::spawn(move || {
+            let _guard = guard;
+            panic!("worker blew up");
+        });
+        assert!(t.join().is_err());
+        assert!(
+            state.begin_import().is_ok(),
+            "the app must not stay busy after a failed import"
+        );
+    }
+
+    #[test]
+    fn imports_and_live_capture_exclude_each_other() {
+        let state = CaptureState::default();
+        *state.session.lock_recover() = Some(live_session());
+        assert!(state.live_active());
+        assert!(
+            matches!(state.begin_import(), Err(CaptureError::Busy(m)) if m.contains("Stop the current capture"))
+        );
+        // once the capture stops, importing is possible again
+        state.session.lock_recover().as_mut().unwrap().stop();
+        assert!(!state.live_active());
+        let _import = state.begin_import().unwrap();
+        assert!(state.ensure_no_import().is_err());
+    }
 }

@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use super::dissect::{Dissection, L3, L4, dissect};
 use super::ethernet::format_mac;
+use super::ports::{Transport, guess};
 use crate::capture::RawPacket;
 
 /// Compact per-packet record sent to the UI. Never contains the payload.
@@ -38,18 +39,12 @@ pub struct PacketSummary {
 
 /// Best-effort application protocol from well-known ports. Refined by payload inspection elsewhere.
 fn guess_application(transport: &str, src: u16, dst: u16) -> Option<&'static str> {
-    let by_port = |p: u16| match (transport, p) {
-        ("UDP" | "TCP", 53) => Some("DNS"),
-        ("UDP", 5353) => Some("MDNS"),
-        ("UDP", 67 | 68) => Some("DHCP"),
-        ("UDP", 123) => Some("NTP"),
-        ("UDP", 443) => Some("QUIC"),
-        ("TCP", 80 | 8080) => Some("HTTP"),
-        ("TCP", 443) => Some("TLS"),
-        ("TCP", 22) => Some("SSH"),
-        _ => None,
+    let t = match transport {
+        "TCP" => Transport::Tcp,
+        "UDP" => Transport::Udp,
+        _ => return None,
     };
-    by_port(dst).or_else(|| by_port(src))
+    guess(t, dst, src)
 }
 
 pub fn summarize(packet: &RawPacket) -> PacketSummary {

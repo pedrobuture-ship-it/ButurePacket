@@ -20,3 +20,17 @@ export function newestDistinct(values: Iterable<string | null | undefined>, max 
 export function buildRecents(input: { ipsOldestFirst: Iterable<string | null | undefined>; domainsOldestFirst: Iterable<string | null | undefined> }): Recents {
   return { ips: newestDistinct(input.ipsOldestFirst), domains: newestDistinct(input.domainsOldestFirst) };
 }
+
+/** Remembers the last computed value per key, so heavy work runs once per data change, not per keystroke. */
+export class RecentsCache {
+  private key: string | null = null;
+  private value: Recents | null = null;
+
+  get(key: string, compute: () => Recents): Recents {
+    if (this.value === null || this.key !== key) {
+      this.value = compute();
+      this.key = key;
+    }
+    return this.value;
+  }
+}

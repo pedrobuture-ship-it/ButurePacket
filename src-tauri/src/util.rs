@@ -18,10 +18,32 @@ impl<T> LockRecover<T> for Mutex<T> {
     }
 }
 
+/// Microseconds as a short duration: "340 µs", "21 ms", "21.4 ms", "250 ms".
+pub fn fmt_ms(micros: i64) -> String {
+    if micros.abs() < 1_000 {
+        return format!("{micros} µs");
+    }
+    let ms = micros as f64 / 1000.0;
+    if ms >= 100.0 {
+        format!("{ms:.0} ms")
+    } else {
+        format!("{ms:.1} ms").replace(".0 ms", " ms")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[test]
+    fn durations_read_naturally() {
+        assert_eq!(fmt_ms(340), "340 µs");
+        assert_eq!(fmt_ms(21_000), "21 ms");
+        assert_eq!(fmt_ms(21_400), "21.4 ms");
+        assert_eq!(fmt_ms(250_000), "250 ms");
+        assert_eq!(fmt_ms(0), "0 µs");
+    }
 
     #[test]
     fn recovers_a_poisoned_lock() {

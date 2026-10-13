@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { filterProgress, filteredIndices, invalidatePacketView, makePacketView } from "./packetView";
+import { filterProgress, filteredIndices, invalidatePacketView, makePacketView, makeStoredView } from "./packetView";
 import { packetBuffer, usePacketsStore } from "@/stores/packets";
 import { parseFilter } from "@/lib/filter";
 import type { PacketSummary } from "@/types/ipc";
@@ -80,5 +80,16 @@ describe("packet view", () => {
     packetBuffer.rows.splice(0, 1);
     packetBuffer.generation++;
     expect(filteredIndices(f, 1)).toEqual([0]);
+  });
+
+  it("builds a view over stored rows", () => {
+    const rows = [row(10, 443), row(20, 80), row(35, 443)];
+    const v = makeStoredView(rows);
+    expect(v.count).toBe(3);
+    expect(v.at(1)?.id).toBe(20);
+    expect(v.at(9)).toBeUndefined();
+    expect(v.positionOfId(35)).toBe(2);
+    expect(v.positionOfId(11)).toBe(-1);
+    expect(makeStoredView([]).positionOfId(1)).toBe(-1);
   });
 });

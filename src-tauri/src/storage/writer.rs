@@ -51,7 +51,9 @@ impl StorageConfig {
     pub fn live() -> Self {
         Self {
             max_bytes: 4 << 30,
-            queue: 256,
+            // Each queued job can hold a whole batch of rows, so the queue is kept short: a stalled
+            // disk must not turn into hundreds of megabytes of waiting summaries.
+            queue: 32,
             block_when_full: false,
             defer_indexes: false,
         }

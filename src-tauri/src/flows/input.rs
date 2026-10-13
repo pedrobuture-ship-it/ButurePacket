@@ -2,6 +2,7 @@ use std::net::IpAddr;
 
 use super::key::{Endpoint, Proto};
 use crate::capture::RawPacket;
+use crate::protocols::ipv4::{PROTO_TCP, PROTO_UDP};
 use crate::protocols::{Dissection, L3, L4};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,8 +58,11 @@ impl FlowInput {
                     Proto::Icmp
                 }
             }
-            // Unparsed transport (fragments, truncated headers): still attributable to an IP conversation.
-            Some(L4::Other(_)) | None => Proto::from_number(proto_num),
+            Some(L4::Other(p)) => Proto::from_number(*p),
+            // A TCP/UDP header that could not be read (small snap length, non-first fragment) has
+            // no ports: attributing it to a flow would merge every such packet between two hosts.
+            None if matches!(proto_num, PROTO_TCP | PROTO_UDP) => return None,
+            None => Proto::from_number(proto_num),
         };
         Some(Self {
             ts_micros: raw.ts_micros,

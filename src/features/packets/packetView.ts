@@ -63,6 +63,25 @@ export interface PacketView {
   positionOfId: (id: number) => number;
 }
 
+/** A view over rows fetched from the stored capture (ascending ids). */
+export function makeStoredView(rows: readonly PacketSummary[]): PacketView {
+  return {
+    count: rows.length,
+    at: (i) => rows[i],
+    positionOfId: (id) => {
+      let lo = 0;
+      let hi = rows.length - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (rows[mid].id === id) return mid;
+        if (rows[mid].id < id) lo = mid + 1;
+        else hi = mid - 1;
+      }
+      return -1;
+    },
+  };
+}
+
 export function makePacketView(indices: number[] | null, rowCount: number): PacketView {
   if (indices === null) return { count: rowCount, at: (i) => packetBuffer.get(i), positionOfId: (id) => packetBuffer.indexOfId(id) };
   return {

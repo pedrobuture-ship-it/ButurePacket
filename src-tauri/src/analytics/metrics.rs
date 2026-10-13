@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use super::dns::DnsStats;
 use crate::flows::{Flow, Observed};
+use crate::util::fmt_ms;
 
 /// A day of one-second buckets (~7 MB), enough to chart long offline captures.
 const MAX_BUCKETS: usize = 86_400;
@@ -371,10 +372,6 @@ pub fn rank<'a>(flows: impl Iterator<Item = &'a Flow>) -> Rankings {
     }
 }
 
-fn ms(micros: i64) -> String {
-    format!("{:.0} ms", micros as f64 / 1000.0)
-}
-
 pub fn detect_problems(
     tcp: &TcpTotals,
     series: &[Bucket],
@@ -389,7 +386,7 @@ pub fn detect_problems(
             id: "dns-latency",
             label: ProblemLabel::PotentialIssue,
             title: "High DNS latency".into(),
-            detail: format!("95% of lookups finished within {} (average {}). Slow resolvers delay every new connection.", ms(p95), dns.avg_latency.map_or("unknown".into(), ms)),
+            detail: format!("95% of lookups finished within {} (average {}). Slow resolvers delay every new connection.", fmt_ms(p95), dns.avg_latency.map_or("unknown".into(), fmt_ms)),
         });
     }
 

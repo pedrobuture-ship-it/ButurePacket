@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -141,19 +141,12 @@ impl OfflineSink for FileSink {
     }
 }
 
-fn busy(state: &CaptureState) -> bool {
-    state.offline_running.load(Ordering::SeqCst) || state.live_active()
-}
-
 /// Begins analysing a capture file in the background. Called only with paths the user chose
 /// through the native file dialog or by dropping a file; the web view can never supply a path.
 pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result<(), CaptureError> {
-    if busy(state) {
-        return Err(CaptureError::Busy(
-            "Stop the current capture or wait for the open file to finish before opening another."
-                .into(),
-        ));
-    }
+    // Atomic claim: refuses while a live capture runs or another file is opening. The guard
+    // releases the claim on every exit path, including a panic in the worker.
+    let guard = state.begin_import()?;
     let validated = offline::validate_input_path(&path)?;
     let file_name = validated
         .file_name()
@@ -166,13 +159,12 @@ pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result
     super::storage::attach(&app, state, false, &file_name);
     let cancel = Arc::new(AtomicBool::new(false));
     *state.offline_cancel.lock_recover() = Some(cancel.clone());
-    state.offline_running.store(true, Ordering::SeqCst);
 
     let pipeline = state.pipeline.clone();
-    let running = state.offline_running.clone();
     std::thread::Builder::new()
         .name("open-capture".into())
         .spawn(move || {
+            let _guard = guard; // released when this closure ends, even by panic
             let sink = FileSink {
                 app: app.clone(),
                 pipeline: pipeline.clone(),
@@ -185,7 +177,14 @@ pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result
                 last_analytics: Mutex::new(Instant::now()),
                 drain: super::capture::Throttle::new(),
             };
-            let result = offline::run(&validated, &cancel, &sink);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                offline::run(&validated, &cancel, &sink)
+            }))
+            .unwrap_or_else(|_| {
+                Err(CaptureError::Backend(
+                    "Analysis of this file stopped unexpectedly. The file may be damaged.".into(),
+                ))
+            });
             super::capture::emit_updates(&app, pipeline.drain_updates());
             let _ = app.emit("capture://analytics", pipeline.analytics(true));
             let mut done = sink.payload(None);
@@ -205,7 +204,6 @@ pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result
                 "capture://state",
                 super::capture::state_payload(SessionState::Stopped),
             );
-            running.store(false, Ordering::SeqCst);
         })
         .map_err(|e| CaptureError::Io(e.to_string()))?;
     Ok(())
@@ -255,11 +253,36 @@ pub fn validate_output_path(path: &Path) -> Result<(), CaptureError> {
     }
 }
 
+/// Creates a fresh temporary file next to `path`. `create_new` refuses to open anything that
+/// already exists (including a symlink someone planted at a guessable name), so the write can
+/// never be redirected; on a clash another name is tried.
+fn create_temp_beside(path: &Path) -> Result<(PathBuf, fs::File), CaptureError> {
+    use std::io::ErrorKind;
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    for attempt in 0..16u32 {
+        let tmp = path.with_extension(format!("tmp-{}-{}-{attempt}", std::process::id(), nanos));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(CaptureError::Io(
+        "Could not create a temporary file next to the destination.".into(),
+    ))
+}
+
 pub fn save_packets(pipeline: &Pipeline, path: &Path) -> Result<SaveResult, CaptureError> {
     validate_output_path(path)?;
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    let (tmp, file) = create_temp_beside(path)?;
     let result = (|| {
-        let file = fs::File::create(&tmp)?;
         let mut writer = PcapWriter::new(BufWriter::new(file))?;
         let mut next = 0u64;
         let mut evicted = false;
@@ -450,6 +473,23 @@ mod tests {
             );
             assert_eq!(fs::read(&target).unwrap(), b"precious");
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_planted_symlink_at_the_temp_name_cannot_redirect_the_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim.txt");
+        fs::write(&victim, b"precious").unwrap();
+        // pre-plant links at every name the old, predictable scheme would have used
+        let out = dir.path().join("out.pcap");
+        for suffix in [format!("tmp-{}", std::process::id()), "tmp".to_string()] {
+            let _ = std::os::unix::fs::symlink(&victim, out.with_extension(suffix));
+        }
+        let r = save_packets(&pipeline_with(1..=5), &out).unwrap();
+        assert_eq!(r.packets, 5);
+        assert_eq!(fs::read(&victim).unwrap(), b"precious");
+        assert!(fs::metadata(&out).unwrap().len() > 24);
     }
 
     #[test]

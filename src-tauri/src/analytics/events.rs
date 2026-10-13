@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::dns::{DnsStatus, DnsTransactionView};
 use super::tls::TlsInfo;
 use crate::flows::{Flow, Observed, TcpState};
+use crate::util::fmt_ms;
 
 const MAX_HISTORY: usize = 200_000;
 const MAX_RETX_EVENTS_PER_FLOW: u32 = 20;
@@ -66,15 +67,6 @@ pub struct EventEngine {
     dns_response_announced: HashSet<u64>,
     tls_announced: HashSet<u64>,
     burst: Burst,
-}
-
-fn fmt_ms(micros: i64) -> String {
-    let ms = micros as f64 / 1000.0;
-    if ms >= 100.0 {
-        format!("{ms:.0} ms")
-    } else {
-        format!("{ms:.1} ms").replace(".0 ms", " ms")
-    }
 }
 
 fn fmt_bytes(b: u64) -> String {

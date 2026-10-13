@@ -3,14 +3,21 @@ import { AlertCircle, Clock, Filter, Search } from "lucide-react";
 import { Button, IconButton, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { applySuggestion, suggest, type Suggestion } from "@/lib/filter/suggest";
-import { buildRecents } from "@/lib/filter/recents";
-import { dnsBuffer } from "@/stores/dns";
-import { flowBuffer } from "@/stores/flows";
+import { RecentsCache, buildRecents } from "@/lib/filter/recents";
+import { dnsBuffer, useDnsStore } from "@/stores/dns";
+import { flowBuffer, useFlowsStore } from "@/stores/flows";
 import { packetBuffer } from "@/stores/packets";
 import { useUiStore } from "@/stores/ui";
 
-/** Recent addresses and domains seen in captured traffic, for autocomplete. */
+const recentsCache = new RecentsCache();
+
+/** Recent addresses and domains seen in captured traffic, for autocomplete. Cached per data version. */
 function collectRecents() {
+  const key = `${useFlowsStore.getState().version}|${useDnsStore.getState().version}|${packetBuffer.rows.length >> 9}`;
+  return recentsCache.get(key, computeRecents);
+}
+
+function computeRecents() {
   const flows = [...flowBuffer.byId.values()].sort((a, b) => a.lastSeenAt - b.lastSeenAt);
   const tail = packetBuffer.rows.slice(-300);
   return buildRecents({

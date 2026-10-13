@@ -6,9 +6,15 @@ use super::flow::{Direction, Flow, SPARK_WINDOW, TcpState};
 use super::input::FlowInput;
 use super::key::{Endpoint, FlowKey};
 use crate::analytics::tls::TlsInfo;
+use crate::protocols::ports::{Transport, guess};
+use crate::protocols::tcp::{ACK, SYN};
 
 /// Flow table limit; the least recently seen flows are dropped beyond it.
 pub const DEFAULT_MAX_FLOWS: usize = 200_000;
+/// UDP/ICMP silence after which the same 5-tuple counts as a new conversation.
+const IDLE_GAP_MICROS: i64 = 120_000_000;
+/// Most flow changes handed to the UI per drain; the rest stay queued for the next one.
+pub const MAX_FLOWS_PER_DRAIN: usize = 5_000;
 
 /// Serializable snapshot of a flow for the UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -88,18 +94,12 @@ pub fn guess_app_label(f: &Flow) -> Option<&'static str> {
     if f.tls.is_some() {
         return Some("TLS");
     }
-    let by_port = |p: u16| match (f.proto, p) {
-        (Tcp | Udp, 53) => Some("DNS"),
-        (Udp, 5353) => Some("MDNS"),
-        (Udp, 67 | 68) => Some("DHCP"),
-        (Udp, 123) => Some("NTP"),
-        (Udp, 443) => Some("QUIC"),
-        (Tcp, 80 | 8080) => Some("HTTP"),
-        (Tcp, 443) => Some("TLS"),
-        (Tcp, 22) => Some("SSH"),
-        _ => None,
+    let transport = match f.proto {
+        Tcp => Transport::Tcp,
+        Udp => Transport::Udp,
+        _ => return None,
     };
-    by_port(f.endpoint_b.port).or_else(|| by_port(f.endpoint_a.port))
+    guess(transport, f.endpoint_b.port, f.endpoint_a.port)
 }
 
 /// Result of folding one packet into the engine.
@@ -155,8 +155,13 @@ impl FlowEngine {
     pub fn observe_detailed(&mut self, input: &FlowInput) -> Observed {
         let key = FlowKey::new(input.proto, input.src, input.dst);
         let mut is_new = false;
-        let id = match self.index.get(&key) {
-            Some(&id) => id,
+        let existing = self
+            .index
+            .get(&key)
+            .copied()
+            .filter(|id| !self.starts_new_flow(*id, input));
+        let id = match existing {
+            Some(id) => id,
             None => {
                 is_new = true;
                 if self.flows.len() >= self.max_flows {
@@ -193,6 +198,22 @@ impl FlowEngine {
     }
 
     /// Drops the least recently seen 1% (at least one) of flows to stay within the limit.
+    /// Whether `input` is a new conversation that merely reuses the 5-tuple of flow `id`:
+    /// a fresh SYN on a connection that already closed or was reset, or UDP/ICMP traffic after a
+    /// long silence (those protocols have no end marker, so idleness is the only signal).
+    fn starts_new_flow(&self, id: u64, input: &FlowInput) -> bool {
+        let Some(f) = self.flows.get(&id) else {
+            return true;
+        };
+        match input.tcp {
+            Some(t) => {
+                let pure_syn = t.flags & SYN != 0 && t.flags & ACK == 0;
+                pure_syn && matches!(f.tcp_state, Some(TcpState::Closed | TcpState::Reset))
+            }
+            None => input.ts_micros.saturating_sub(f.last_seen_at) > IDLE_GAP_MICROS,
+        }
+    }
+
     fn evict_idle(&mut self) {
         let n = (self.max_flows / 100).max(1);
         let mut by_age: Vec<(i64, u64)> = self
@@ -204,7 +225,10 @@ impl FlowEngine {
         by_age.select_nth_unstable(n - 1);
         for &(_, id) in &by_age[..n] {
             if let Some(f) = self.flows.remove(&id) {
-                self.index.remove(&f.key);
+                // The key may already point at a newer flow that reused the 5-tuple.
+                if self.index.get(&f.key) == Some(&id) {
+                    self.index.remove(&f.key);
+                }
                 self.dirty.remove(&id);
                 self.evicted += 1;
             }
@@ -255,9 +279,13 @@ impl FlowEngine {
         }
     }
 
-    /// Flows changed since the previous call, ordered by id.
-    pub fn take_changed(&mut self) -> Vec<FlowView> {
-        let mut ids: Vec<u64> = self.dirty.drain().collect();
+    /// Up to `limit` flows changed since the previous call, ordered by id. Flows beyond the limit
+    /// stay marked as changed and are returned by later calls.
+    pub fn take_changed(&mut self, limit: usize) -> Vec<FlowView> {
+        let mut ids: Vec<u64> = self.dirty.iter().copied().take(limit).collect();
+        for id in &ids {
+            self.dirty.remove(id);
+        }
         ids.sort_unstable();
         ids.iter()
             .filter_map(|id| self.flows.get(id))

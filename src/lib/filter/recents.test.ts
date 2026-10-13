@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRecents, newestDistinct } from "./recents";
+import { RecentsCache, buildRecents, newestDistinct } from "./recents";
 
 describe("recents", () => {
   it("returns distinct values newest first and skips empties", () => {
@@ -10,5 +10,16 @@ describe("recents", () => {
   });
   it("builds both lists", () => {
     expect(buildRecents({ ipsOldestFirst: ["1.1.1.1", "2.2.2.2"], domainsOldestFirst: ["x.com"] })).toEqual({ ips: ["2.2.2.2", "1.1.1.1"], domains: ["x.com"] });
+  });
+
+  it("recomputes only when the key changes", () => {
+    const cache = new RecentsCache();
+    let calls = 0;
+    const compute = () => ({ ips: [String(++calls)], domains: [] });
+    expect(cache.get("a", compute).ips).toEqual(["1"]);
+    expect(cache.get("a", compute).ips).toEqual(["1"]);
+    expect(calls).toBe(1);
+    expect(cache.get("b", compute).ips).toEqual(["2"]);
+    expect(cache.get("a", compute).ips).toEqual(["3"]); // only the latest key is remembered
   });
 });
