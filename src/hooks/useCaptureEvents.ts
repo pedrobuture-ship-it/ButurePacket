@@ -3,6 +3,7 @@ import { api, errorMessage, isIpcError, on } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
 import { formatCount } from "@/lib/format";
 import { useNoticeStore } from "@/stores/notices";
+import { useStorageStore } from "@/stores/storage";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useDnsStore } from "@/stores/dns";
 import { useEventsStore } from "@/stores/events";
@@ -25,6 +26,14 @@ export function useCaptureEvents() {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
       on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://storage", (s) => {
+        const notify = useNoticeStore.getState().push;
+        const prev = useStorageStore.getState().status;
+        useStorageStore.getState().set(s);
+        if (s.error && s.error !== prev.error) notify("error", `Could not store this capture on disk: ${s.error}`);
+        else if (s.limitReached && !prev.limitReached) notify("warning", "The capture database reached its size limit. New packets are still analysed live but are no longer stored.");
+        else if (s.droppedJobs > 0 && prev.droppedJobs === 0) notify("warning", "Storage cannot keep up with the packet rate; some packets are not being stored.");
+      }),
       on("capture://progress", (p) => {
         const notify = useNoticeStore.getState().push;
         if (!p.done) {

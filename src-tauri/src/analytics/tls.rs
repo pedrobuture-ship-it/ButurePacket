@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::protocols::tls::{self, CertMeta, TlsParse};
 
@@ -11,7 +11,7 @@ const MAX_STREAM_BYTES: usize = 32 * 1024;
 const MAX_TRACKED_FLOWS: usize = 100_000;
 
 /// What is known about a flow's TLS session. Absent fields mean "not observable", never "guessed".
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsInfo {
     pub version: Option<String>,

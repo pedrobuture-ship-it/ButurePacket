@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::protocols::ipv4::{PROTO_ICMP, PROTO_TCP, PROTO_UDP};
 use crate::protocols::ipv6::PROTO_ICMPV6;
@@ -36,7 +36,7 @@ impl Proto {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Endpoint {
     pub ip: IpAddr,
     pub port: u16,

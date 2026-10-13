@@ -282,3 +282,33 @@ export interface SaveResult {
   packets: number;
   evicted: boolean;
 }
+
+export interface StorageStatus {
+  packetsWritten: number;
+  droppedJobs: number;
+  bytes: number;
+  limitReached: boolean;
+  error: string | null;
+  /** A database is attached to the capture on screen. */
+  active: boolean;
+}
+
+/** Filters for searching the stored capture; every field maps to an indexed column. */
+export interface StoredPacketQuery {
+  tsFrom?: number;
+  tsTo?: number;
+  ip?: string;
+  srcIp?: string;
+  dstIp?: string;
+  protocol?: string;
+  flowId?: number;
+  domain?: string;
+  afterId?: number;
+  limit?: number;
+  descending?: boolean;
+}
+
+export interface PacketPage {
+  packets: PacketSummary[];
+  total: number;
+}

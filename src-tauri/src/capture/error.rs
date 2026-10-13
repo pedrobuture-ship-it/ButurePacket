@@ -20,6 +20,8 @@ pub enum CaptureError {
     Cancelled,
     #[error("{0}")]
     Busy(String),
+    #[error("Could not use the capture database: {0}")]
+    Storage(String),
     /// Finite sources (tests, offline files) report their end this way. Not a failure.
     #[error("End of packet stream.")]
     EndOfStream,
@@ -52,6 +54,7 @@ impl CaptureError {
             CaptureError::Io(_) => "io",
             CaptureError::Cancelled => "cancelled",
             CaptureError::Busy(_) => "busy",
+            CaptureError::Storage(_) => "storage",
             CaptureError::EndOfStream => "endOfStream",
         }
     }

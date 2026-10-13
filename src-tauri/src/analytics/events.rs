@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::dns::{DnsStatus, DnsTransactionView};
 use super::tls::TlsInfo;
@@ -16,7 +16,7 @@ const TCP_SPIKE_MICROS: i64 = 200_000;
 const BURST_MIN_BYTES: u64 = 1_000_000;
 const BURST_FACTOR: f64 = 5.0;
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum EventKind {
     DnsQuery,

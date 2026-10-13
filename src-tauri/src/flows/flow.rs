@@ -1,13 +1,13 @@
 use std::collections::VecDeque;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::input::{FlowInput, TcpInfo};
 use super::key::{Endpoint, FlowKey, Proto};
 use crate::analytics::tls::TlsInfo;
 use crate::protocols::tcp::{ACK, FIN, RST, SYN};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TcpState {
     SynSent,

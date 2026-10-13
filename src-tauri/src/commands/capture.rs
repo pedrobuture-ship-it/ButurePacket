@@ -18,7 +18,6 @@ use crate::protocols::{PacketDetail, build_detail};
 
 const ANALYTICS_INTERVAL: Duration = Duration::from_secs(1);
 
-#[derive(Default)]
 pub struct CaptureState {
     session: Mutex<Option<CaptureSession>>,
     pub pipeline: Arc<Pipeline>,
@@ -27,6 +26,27 @@ pub struct CaptureState {
     pub offline_cancel: Mutex<Option<Arc<AtomicBool>>>,
     /// The data on screen came from a capture file (charts cover the whole file).
     pub offline_mode: AtomicBool,
+    /// App data directory (scratch databases live under it).
+    pub data_dir: Mutex<Option<std::path::PathBuf>>,
+    /// Persist captures to the scratch database (on by default).
+    pub persist: AtomicBool,
+    /// Database of the capture currently on screen, for read-only queries.
+    pub session_db: Mutex<Option<std::path::PathBuf>>,
+}
+
+impl Default for CaptureState {
+    fn default() -> Self {
+        Self {
+            session: Mutex::default(),
+            pipeline: Arc::default(),
+            offline_running: Arc::default(),
+            offline_cancel: Mutex::default(),
+            offline_mode: AtomicBool::default(),
+            data_dir: Mutex::default(),
+            persist: AtomicBool::new(true),
+            session_db: Mutex::default(),
+        }
+    }
 }
 
 impl CaptureState {
@@ -103,6 +123,7 @@ impl CaptureSink for TauriSink {
             let _ = self
                 .app
                 .emit("capture://analytics", self.pipeline.analytics(false));
+            super::storage::emit_status(&self.app, &self.pipeline);
         }
     }
 
@@ -142,6 +163,7 @@ pub fn capture_start(
     state
         .offline_mode
         .store(false, std::sync::atomic::Ordering::SeqCst);
+    super::storage::attach(&app, &state, true, &interface);
     let sink = TauriSink {
         app,
         pipeline: state.pipeline.clone(),
@@ -177,11 +199,14 @@ pub fn capture_resume(state: State<'_, CaptureState>) -> Result<(), IpcError> {
 }
 
 #[tauri::command]
-pub fn capture_stop(state: State<'_, CaptureState>) -> Result<(), IpcError> {
+pub fn capture_stop(app: AppHandle, state: State<'_, CaptureState>) -> Result<(), IpcError> {
     with_session(&state, |s| {
         s.stop();
         Ok(())
-    })
+    })?;
+    // Wait for the last batches to reach disk before the session is considered over.
+    super::storage::detach(&app, &state);
+    Ok(())
 }
 
 /// Raw bytes of one packet, fetched only when the UI asks (inspector / hex view).
@@ -198,7 +223,8 @@ pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u
 }
 
 #[tauri::command]
-pub fn clear_capture(state: State<'_, CaptureState>) {
+pub fn clear_capture(app: AppHandle, state: State<'_, CaptureState>) {
+    super::storage::detach(&app, &state);
     state.pipeline.clear();
     state
         .offline_mode

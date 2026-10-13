@@ -7,6 +7,7 @@ import { useDnsStore } from "@/stores/dns";
 import { useEventsStore } from "@/stores/events";
 import { useFlowsStore } from "@/stores/flows";
 import { useNoticeStore } from "@/stores/notices";
+import { EMPTY_STORAGE, useStorageStore } from "@/stores/storage";
 import { usePacketsStore } from "@/stores/packets";
 
 const st = () => useCaptureStore.getState();
@@ -28,6 +29,7 @@ function resetViews() {
   useDnsStore.getState().clear();
   useEventsStore.getState().clear();
   useAnalyticsStore.getState().reset();
+  useStorageStore.getState().set(EMPTY_STORAGE);
 }
 
 const CAPTURE_FILTERS = [{ name: "Packet captures", extensions: ["pcap", "pcapng", "cap"] }];

@@ -2,7 +2,7 @@
 //! sends in the clear (ClientHello, ServerHello and, before TLS 1.3, the certificate).
 //! Every field is best effort and absent when it cannot be read.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const CT_CCS: u8 = 20;
 const CT_ALERT: u8 = 21;
@@ -36,7 +36,7 @@ pub struct ServerHello {
     pub alpn: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CertMeta {
     pub subject_cn: Option<String>,

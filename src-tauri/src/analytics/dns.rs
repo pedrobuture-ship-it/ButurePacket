@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::IpAddr;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::protocols::dns::{self, Dns, RCODE_NOERROR, RData};
 
@@ -19,7 +19,7 @@ const MAX_PER_KEY: usize = 32;
 const MAX_LATENCIES: usize = 200_000;
 const MAX_DOMAINS_TRACKED: usize = 200_000;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DnsAnswer {
     pub name: String,
@@ -28,7 +28,7 @@ pub struct DnsAnswer {
     pub ttl: u32,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum DnsStatus {
     Pending,

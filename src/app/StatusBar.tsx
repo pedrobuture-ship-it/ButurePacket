@@ -3,6 +3,7 @@ import { Filter } from "lucide-react";
 import { ModeBadge } from "@/components/ModeBadge";
 import { StatusIndicator, type Status } from "@/components/ui";
 import { useCaptureStore } from "@/stores/capture";
+import { useStorageStore } from "@/stores/storage";
 import { useUiStore } from "@/stores/ui";
 import { formatBytes, formatCount, formatDuration, formatPercent } from "@/lib/format";
 
@@ -32,6 +33,7 @@ function useClock() {
 export function StatusBar() {
   const { state, mode, selectedInterface, stats, error, fileName } = useCaptureStore();
   const filter = useUiStore((s) => s.filter);
+  const storage = useStorageStore((s) => s.status);
   const now = useClock();
   const s = statusOf[state];
   const where = mode === "live" ? `on ${selectedInterface ?? "—"}` : `· ${fileName ?? "file"}`;
@@ -45,6 +47,11 @@ export function StatusBar() {
       </span>
       <span>Buffer: {formatBytes(stats.bufferBytes)}</span>
       <span>Parser Load: {formatPercent(stats.parserLoad)}</span>
+      {storage.active && (
+        <span title="Packet summaries stored in the capture database" className={storage.limitReached || storage.droppedJobs > 0 ? "text-warning" : undefined}>
+          Disk: {formatCount(storage.packetsWritten)} rows · {formatBytes(storage.bytes)}
+        </span>
+      )}
       {error && <span className="truncate text-danger">{error}</span>}
       <div className="flex-1" />
       <ModeBadge />

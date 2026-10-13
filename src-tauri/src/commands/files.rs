@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::capture::{CaptureState, emit_processed};
 use super::error::IpcError;
@@ -80,9 +80,13 @@ impl OfflineSink for FileSink {
             packets.last().map(|p| p.ts_micros),
         );
         let mut out = self.pipeline.process(packets);
-        let room = MAX_PACKET_ROWS.saturating_sub(self.sent_rows.load(Ordering::Relaxed));
-        out.packets
-            .truncate(usize::try_from(room).unwrap_or(usize::MAX));
+        let room =
+            usize::try_from(MAX_PACKET_ROWS.saturating_sub(self.sent_rows.load(Ordering::Relaxed)))
+                .unwrap_or(usize::MAX);
+        if out.packets.len() > room {
+            // Only the first MAX_PACKET_ROWS reach the UI; the database still gets every row.
+            out.packets = Arc::new(out.packets[..room].to_vec());
+        }
         self.sent_rows
             .fetch_add(out.packets.len() as u64, Ordering::Relaxed);
         emit_processed(&self.app, out);
@@ -114,6 +118,7 @@ impl OfflineSink for FileSink {
             let _ = self
                 .app
                 .emit("capture://analytics", self.pipeline.analytics(true));
+            super::storage::emit_status(&self.app, &self.pipeline);
         }
     }
 }
@@ -144,6 +149,7 @@ pub fn open_capture(
 
     state.pipeline.clear();
     state.offline_mode.store(true, Ordering::SeqCst);
+    super::storage::attach(&app, &state, false, &file_name);
     let cancel = Arc::new(AtomicBool::new(false));
     *state.offline_cancel.lock().unwrap() = Some(cancel.clone());
     state.offline_running.store(true, Ordering::SeqCst);
@@ -177,6 +183,8 @@ pub fn open_capture(
                 Err(e) => done.error = Some(e.into()),
             }
             let _ = app.emit("capture://progress", done);
+            let state = app.state::<CaptureState>();
+            super::storage::detach(&app, &state);
             let _ = app.emit(
                 "capture://state",
                 super::capture::state_payload(SessionState::Stopped),

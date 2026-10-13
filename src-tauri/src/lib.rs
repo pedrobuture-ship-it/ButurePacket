@@ -12,6 +12,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::capture::CaptureState::default())
+        .setup(|app| {
+            use tauri::Manager;
+            if let Ok(dir) = app.path().app_data_dir() {
+                commands::storage::clean_scratch(&dir);
+                let state = app.state::<commands::capture::CaptureState>();
+                *state.data_dir.lock().unwrap() = Some(dir);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::capture::list_capture_interfaces,
@@ -29,6 +38,8 @@ pub fn run() {
             commands::files::open_capture,
             commands::files::cancel_open,
             commands::files::save_capture,
+            commands::storage::query_stored_packets,
+            commands::storage::set_persistence,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::flow::{Direction, Flow, SPARK_WINDOW, TcpState};
 use super::input::FlowInput;
@@ -10,7 +10,7 @@ use crate::analytics::tls::TlsInfo;
 pub const DEFAULT_MAX_FLOWS: usize = 500_000;
 
 /// Serializable snapshot of a flow for the UI.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowView {
     pub id: u64,

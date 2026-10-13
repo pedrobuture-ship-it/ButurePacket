@@ -1,20 +1,25 @@
 //! Packet → parser → flow engine → (later: correlation, analytics). One place where a batch is processed.
 
-use std::sync::Mutex;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::analytics::dns::{DnsStats, DnsTracker, DnsTransactionView};
 use crate::analytics::events::{EventEngine, TimelineEvent};
 use crate::analytics::metrics::{AnalyticsSnapshot, MetricsEngine};
 use crate::analytics::tls::TlsTracker;
+use crate::capture::CaptureError;
 use crate::capture::RawPacket;
 use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, Proto};
 use crate::protocols::{PacketSummary, dissect, summary::summarize_dissection};
+use crate::storage::database::Database;
 use crate::storage::memory::PacketStore;
+use crate::storage::writer::{Job, StorageConfig, StorageStatus, StorageWriter};
 
 /// What one processed batch produced for the UI.
 #[derive(Debug, Default)]
 pub struct Processed {
-    pub packets: Vec<PacketSummary>,
+    /// Shared so the UI event and the database writer don't each need their own copy.
+    pub packets: Arc<Vec<PacketSummary>>,
     pub flows: Vec<FlowView>,
     pub dns: Vec<DnsTransactionView>,
     pub dns_stats: Option<DnsStats>,
@@ -32,6 +37,8 @@ pub struct Pipeline {
     pub tls: Mutex<TlsTracker>,
     pub events: Mutex<EventEngine>,
     pub metrics: Mutex<MetricsEngine>,
+    /// Background SQLite writer for the capture in progress, if persistence is on.
+    storage: Mutex<Option<StorageWriter>>,
 }
 
 impl Pipeline {
@@ -106,6 +113,19 @@ impl Pipeline {
         for raw in batch {
             store.push(raw);
         }
+        let packets = Arc::new(packets);
+        if let Some(w) = self.storage.lock().unwrap().as_ref() {
+            w.submit(Job::Packets(packets.clone()));
+            if !changed.is_empty() {
+                w.submit(Job::Flows(changed.clone()));
+            }
+            if !dns_changed.is_empty() {
+                w.submit(Job::Dns(dns_changed.clone()));
+            }
+            if !new_events.is_empty() {
+                w.submit(Job::Events(new_events.clone()));
+            }
+        }
         Processed {
             packets,
             flows: changed,
@@ -113,6 +133,36 @@ impl Pipeline {
             dns_stats,
             events: new_events,
         }
+    }
+
+    /// Starts persisting everything processed from now on into the database at `path`.
+    pub fn attach_storage(
+        &self,
+        path: &Path,
+        config: StorageConfig,
+        source: &str,
+    ) -> Result<(), CaptureError> {
+        let db = Database::open(path)?;
+        db.set_meta("source", source)?;
+        let writer = StorageWriter::start(db, config)?;
+        if let Some(old) = self.storage.lock().unwrap().replace(writer) {
+            let _ = old.finish();
+        }
+        Ok(())
+    }
+
+    /// Flushes and closes the database, if one is attached.
+    pub fn detach_storage(&self) -> Option<Result<StorageStatus, CaptureError>> {
+        let writer = self.storage.lock().unwrap().take()?;
+        Some(writer.finish())
+    }
+
+    pub fn storage_status(&self) -> Option<StorageStatus> {
+        self.storage
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(StorageWriter::status)
     }
 
     /// Rolling metrics, rankings and potential problems for the Analytics screen.
@@ -424,6 +474,9 @@ mod tests {
             }
         }
         let p = Pipeline::default();
+        let db_path = dir.path().join("session.db");
+        p.attach_storage(&db_path, StorageConfig::import(), "e2e.pcap")
+            .unwrap();
         let sink = Sink(&p, Default::default());
         let out = offline::run(&path, &AtomicBool::new(false), &sink).unwrap();
         assert_eq!(out.packets, 8);
@@ -465,5 +518,41 @@ mod tests {
         assert_eq!(snap.dns.queries, 1);
         assert!(snap.rankings.protocols.iter().any(|r| r.key == "TLS"));
         assert!(snap.problems.is_empty());
+
+        // Everything that reached the UI was also persisted, and is searchable by indexed fields.
+        let status = p.detach_storage().unwrap().unwrap();
+        assert_eq!((status.packets_written, status.error), (8, None));
+        let db = Database::open(&db_path).unwrap();
+        use crate::storage::packets::{PacketQuery, count_packets, query_packets};
+        assert_eq!(count_packets(&db, &PacketQuery::default()).unwrap(), 8);
+        let tls = query_packets(
+            &db,
+            &PacketQuery {
+                protocol: Some("tls".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        // every segment of the port-443 flow is labelled TLS (port heuristic)
+        assert_eq!(tls.len(), 6);
+        assert!(
+            tls.iter()
+                .any(|p| p.info == "Client Hello (SNI: api.github.com)")
+        );
+        let github = PacketQuery {
+            domain: Some("API.github.com".into()),
+            ..Default::default()
+        };
+        assert_eq!(count_packets(&db, &github).unwrap(), 3); // DNS query, DNS response, ClientHello
+        let flows = crate::storage::flows::query_flows(&db, &Default::default()).unwrap();
+        assert_eq!(flows.len(), 2);
+        assert_eq!(
+            flows[0].tls.as_ref().and_then(|t| t.sni.as_deref()),
+            Some("api.github.com")
+        );
+        assert_eq!(crate::storage::dns::dns_count(&db).unwrap(), 1);
+        assert!(crate::storage::events::event_count(&db).unwrap() >= 5);
+        assert_eq!(db.meta("source").unwrap().as_deref(), Some("e2e.pcap"));
+        assert!(p.storage_status().is_none());
     }
 }
