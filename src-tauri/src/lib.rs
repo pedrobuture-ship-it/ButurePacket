@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod capture;
 pub mod commands;
 pub mod flows;
+pub mod pipeline;
 pub mod process;
 pub mod protocols;
 pub mod security;
@@ -21,6 +22,7 @@ pub fn run() {
             commands::capture::get_packet_bytes,
             commands::capture::clear_capture,
             commands::capture::get_packet_detail,
+            commands::capture::get_flows,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");

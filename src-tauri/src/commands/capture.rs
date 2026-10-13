@@ -8,13 +8,14 @@ use crate::capture::{
     CaptureError, CaptureSession, CaptureSink, InterfaceInfo, LiveSource, RawPacket, SessionConfig,
     SessionState, StatsSnapshot, list_interfaces,
 };
-use crate::protocols::{PacketDetail, PacketSummary, build_detail, summarize};
-use crate::storage::memory::PacketStore;
+use crate::flows::FlowView;
+use crate::pipeline::Pipeline;
+use crate::protocols::{PacketDetail, build_detail};
 
 #[derive(Default)]
 pub struct CaptureState {
     session: Mutex<Option<CaptureSession>>,
-    pub store: Arc<Mutex<PacketStore>>,
+    pub pipeline: Arc<Pipeline>,
 }
 
 #[derive(Serialize, Clone)]
@@ -26,7 +27,7 @@ struct StatePayload {
 
 struct TauriSink {
     app: AppHandle,
-    store: Arc<Mutex<PacketStore>>,
+    pipeline: Arc<Pipeline>,
 }
 
 impl CaptureSink for TauriSink {
@@ -34,14 +35,11 @@ impl CaptureSink for TauriSink {
         if packets.is_empty() {
             return;
         }
-        let summaries: Vec<PacketSummary> = packets.iter().map(summarize).collect();
-        {
-            let mut store = self.store.lock().unwrap();
-            for p in packets {
-                store.push(p);
-            }
+        let out = self.pipeline.process(packets);
+        let _ = self.app.emit("capture://packets", out.packets);
+        if !out.flows.is_empty() {
+            let _ = self.app.emit("capture://flows", out.flows);
         }
-        let _ = self.app.emit("capture://packets", summaries);
     }
 
     fn on_stats(&self, stats: &StatsSnapshot) {
@@ -80,10 +78,10 @@ pub fn capture_start(
         return Err(CaptureError::AlreadyRunning.into());
     }
     let source = LiveSource::open(&interface)?;
-    state.store.lock().unwrap().clear();
+    state.pipeline.clear();
     let sink = TauriSink {
         app,
-        store: state.store.clone(),
+        pipeline: state.pipeline.clone(),
     };
     *slot = Some(CaptureSession::start(
         Box::new(source),
@@ -125,7 +123,7 @@ pub fn capture_stop(state: State<'_, CaptureState>) -> Result<(), IpcError> {
 /// Raw bytes of one packet, fetched only when the UI asks (inspector / hex view).
 #[tauri::command]
 pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u8>, IpcError> {
-    let store = state.store.lock().unwrap();
+    let store = state.pipeline.store.lock().unwrap();
     store
         .get(id)
         .map(|p| p.data.clone())
@@ -137,7 +135,7 @@ pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u
 
 #[tauri::command]
 pub fn clear_capture(state: State<'_, CaptureState>) {
-    state.store.lock().unwrap().clear();
+    state.pipeline.clear();
 }
 
 /// Layered, byte-mapped decode of one packet for the inspector.
@@ -146,9 +144,14 @@ pub fn get_packet_detail(
     state: State<'_, CaptureState>,
     id: u64,
 ) -> Result<PacketDetail, IpcError> {
-    let store = state.store.lock().unwrap();
+    let store = state.pipeline.store.lock().unwrap();
     store.get(id).map(build_detail).ok_or_else(|| IpcError {
         kind: "packetNotFound".into(),
         message: format!("Packet #{id} is no longer available."),
     })
+}
+
+#[tauri::command]
+pub fn get_flows(state: State<'_, CaptureState>) -> Vec<FlowView> {
+    state.pipeline.flows.lock().unwrap().snapshot()
 }
