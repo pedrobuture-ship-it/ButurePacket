@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
-import { Badge, EmptyState, Sparkline, Tabs } from "@/components/ui";
+import { ArrowDown, ArrowUp, BookOpen, Copy } from "lucide-react";
+import { Badge, Button, EmptyState, Modal, Sparkline, Tabs } from "@/components/ui";
+import { StoryPanel, useStory } from "@/features/story/StoryPanel";
+import { storyToText } from "@/features/story/story";
 import { formatBytes, formatCount, formatLatency, formatSpan, formatTimestamp } from "@/lib/format";
 import { eventBuffer, useEventsStore } from "@/stores/events";
 import { formatClock } from "@/features/timeline/model";
@@ -181,8 +183,36 @@ function TlsTab({ flow }: { flow: FlowView }) {
   );
 }
 
+function StoryModal({ flow, onClose }: { flow: FlowView; onClose: () => void }) {
+  const story = useStory(flow);
+  return (
+    <Modal
+      open
+      title="Network Story"
+      onClose={onClose}
+      width={620}
+      footer={
+        <>
+          <Button icon={<Copy size={13} />} onClick={() => void navigator.clipboard?.writeText(storyToText(story)).catch(() => undefined)}>
+            Copy as text
+          </Button>
+          <Button variant="primary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-3 font-mono text-xs text-muted">
+        {endpointText(flow.endpointA, true)} → {endpointText(flow.endpointB, true)}
+      </p>
+      <StoryPanel flow={flow} />
+    </Modal>
+  );
+}
+
 export function FlowInspector({ flow }: { flow: FlowView }) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [storyOpen, setStoryOpen] = useState(false);
   const problems = flowProblems(flow);
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -192,6 +222,12 @@ export function FlowInspector({ flow }: { flow: FlowView }) {
           {endpointText(flow.endpointA, true)} → {endpointText(flow.endpointB, true)}
         </span>
       </div>
+      <div className="shrink-0 border-b border-line px-3 py-2">
+        <Button size="sm" variant="primary" icon={<BookOpen size={13} />} onClick={() => setStoryOpen(true)}>
+          Explain this connection
+        </Button>
+      </div>
+      {storyOpen && <StoryModal flow={flow} onClose={() => setStoryOpen(false)} />}
       <Tabs tabs={TABS.map((t) => (t.id === "problems" && problems.length ? { ...t, label: `Problems (${problems.length})` } : t))} value={tab} onChange={setTab} className="shrink-0 px-1" />
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {tab === "overview" && (
