@@ -26,7 +26,7 @@ export const useCaptureStore = create<CaptureStore>((set) => ({
   selectedInterface: null,
   stats: EMPTY_STATS,
   error: null,
-  setState: (state) => set({ state, error: state === "error" ? undefined : null }),
+  setState: (state) => set((s) => ({ state, error: state === "error" ? s.error : null })),
   setMode: (mode) => set({ mode }),
   setInterfaces: (interfaces) =>
     set((s) => ({

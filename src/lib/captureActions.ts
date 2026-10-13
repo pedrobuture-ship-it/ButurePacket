@@ -1,16 +1,27 @@
+import { api, errorMessage } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
 
-/**
- * User-triggered capture operations. The Rust capture engine is wired in
- * a later step; until then these only drive the local state machine.
- */
 const st = () => useCaptureStore.getState();
 
+async function run(action: () => Promise<unknown>) {
+  try {
+    await action();
+  } catch (e) {
+    st().fail(errorMessage(e));
+  }
+}
+
+/** User-triggered capture operations. State changes arrive back via backend events. */
 export const captureActions = {
-  start: () => st().setState("capturing"),
-  pause: () => st().setState("paused"),
-  resume: () => st().setState("capturing"),
-  stop: () => st().setState("idle"),
+  start: () => {
+    const iface = st().selectedInterface;
+    if (!iface) return;
+    st().reset();
+    return run(() => api.captureStart(iface));
+  },
+  pause: () => run(api.capturePause),
+  resume: () => run(api.captureResume),
+  stop: () => run(api.captureStop),
   clear: () => st().reset(),
   openFile: () => undefined,
   save: () => undefined,

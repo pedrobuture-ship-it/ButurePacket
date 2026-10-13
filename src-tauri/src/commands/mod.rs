@@ -1,5 +1,8 @@
 //! Typed IPC surface: every `#[tauri::command]` lives here.
 
+pub mod capture;
+pub mod error;
+
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

@@ -10,7 +10,15 @@ pub mod storage;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![commands::app_info])
+        .manage(commands::capture::CaptureState::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::capture::list_capture_interfaces,
+            commands::capture::capture_start,
+            commands::capture::capture_pause,
+            commands::capture::capture_resume,
+            commands::capture::capture_stop,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");
 }
