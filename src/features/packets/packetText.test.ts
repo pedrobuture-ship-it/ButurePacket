@@ -4,6 +4,7 @@ import type { PacketSummary } from "@/types/ipc";
 
 const base: PacketSummary = {
   id: 1,
+  flowId: 1,
   timestamp: new Date(2024, 0, 1, 10, 0, 0, 5).getTime() * 1000,
   capturedLength: 74,
   originalLength: 74,

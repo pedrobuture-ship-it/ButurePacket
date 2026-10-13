@@ -21,6 +21,7 @@ export interface StatePayload {
 /** One decoded packet row. The payload is never included; fetch bytes on demand. */
 export interface PacketSummary {
   id: number;
+  flowId: number | null;
   /** Microseconds since the Unix epoch. */
   timestamp: number;
   capturedLength: number;
@@ -62,4 +63,42 @@ export interface PacketDetail {
   sections: PacketSection[];
   /** Captured bytes of the frame. */
   bytes: number[];
+}
+
+export interface FlowEndpoint {
+  ip: string;
+  port: number;
+}
+
+export type TcpState = "SYN_SENT" | "SYN_RECEIVED" | "ESTABLISHED" | "CLOSING" | "CLOSED" | "RESET";
+
+/** One bidirectional conversation. A is the side that spoke first (usually the client). */
+export interface FlowView {
+  id: number;
+  protocol: string;
+  applicationProtocol: string | null;
+  endpointA: FlowEndpoint;
+  endpointB: FlowEndpoint;
+  /** Microseconds since the Unix epoch. */
+  startedAt: number;
+  lastSeenAt: number;
+  /** Microseconds. */
+  duration: number;
+  packetsAToB: number;
+  packetsBToA: number;
+  bytesAToB: number;
+  bytesBToA: number;
+  totalPackets: number;
+  totalBytes: number;
+  tcpState: TcpState | null;
+  retransmissions: number;
+  resets: number;
+  duplicateAcks: number;
+  zeroWindows: number;
+  /** TCP handshake round trip in microseconds. */
+  latency: number | null;
+  domains: string[];
+  process: string | null;
+  /** Bytes per second for the last 60 seconds. */
+  sparkline: number[];
 }

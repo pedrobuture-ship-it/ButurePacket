@@ -26,10 +26,11 @@ impl Pipeline {
         let mut flows = self.flows.lock().unwrap();
         for raw in &batch {
             let d = dissect(&raw.data);
-            packets.push(summarize_dissection(raw, &d));
+            let mut summary = summarize_dissection(raw, &d);
             if let Some(input) = FlowInput::from_dissection(raw, &d) {
-                flows.observe(&input);
+                summary.flow_id = Some(flows.observe(&input));
             }
+            packets.push(summary);
         }
         let changed = flows.take_changed();
         drop(flows);
@@ -75,6 +76,9 @@ mod tests {
         let out = p.process(vec![frame(1, 5000), frame(2, 5000), frame(3, 6000)]);
         assert_eq!(out.packets.len(), 3);
         assert_eq!(out.flows.len(), 2);
+        assert_eq!(out.packets[0].flow_id, out.packets[1].flow_id);
+        assert_ne!(out.packets[0].flow_id, out.packets[2].flow_id);
+        assert!(out.packets[0].flow_id.is_some());
         assert_eq!(p.store.lock().unwrap().get(2).unwrap().id, 2);
         // second batch only reports flows that changed
         let out = p.process(vec![frame(4, 6000)]);

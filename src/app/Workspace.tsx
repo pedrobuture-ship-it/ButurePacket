@@ -1,5 +1,6 @@
 import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
+import { FlowsView } from "@/features/flows/FlowsView";
 import { PacketsView } from "@/features/packets/PacketsView";
 import { useUiStore, type ViewId } from "@/stores/ui";
 
@@ -27,6 +28,8 @@ export function Workspace() {
       <div className="min-h-0 flex-1" key={view}>
         {view === "packets" ? (
           <PacketsView />
+        ) : view === "flows" ? (
+          <FlowsView />
         ) : (
           <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
         )}

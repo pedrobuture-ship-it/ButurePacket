@@ -15,6 +15,7 @@ export * from "./Modal";
 export * from "./Panel";
 export * from "./ResizablePanel";
 export * from "./Select";
+export * from "./Sparkline";
 export * from "./StatusIndicator";
 export * from "./Tabs";
 export * from "./Tooltip";

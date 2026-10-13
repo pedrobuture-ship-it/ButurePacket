@@ -4,6 +4,7 @@ import type { PacketSummary } from "@/types/ipc";
 
 const row = (id: number): PacketSummary => ({
   id,
+  flowId: null,
   timestamp: id,
   capturedLength: 60,
   originalLength: 60,

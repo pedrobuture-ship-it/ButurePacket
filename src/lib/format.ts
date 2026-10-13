@@ -41,3 +41,20 @@ export function formatTimestamp(micros: number): string {
   const p = (n: number, w = 2) => String(n).padStart(w, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
+
+/** Microseconds → "8.4s", "2m 05s", "1h 02m". */
+export function formatSpan(micros: number): string {
+  const s = Math.max(0, micros) / 1e6;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const total = Math.floor(s);
+  if (s < 3600) return `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, "0")}s`;
+  return `${Math.floor(total / 3600)}h ${String(Math.floor((total % 3600) / 60)).padStart(2, "0")}m`;
+}
+
+/** Microseconds → "21 ms", "340 µs". */
+export function formatLatency(micros: number | null): string {
+  if (micros === null) return "—";
+  if (micros < 1000) return `${Math.round(micros)} µs`;
+  const ms = micros / 1000;
+  return `${ms >= 100 ? ms.toFixed(0) : ms.toFixed(1).replace(/\.0$/, "")} ms`;
+}

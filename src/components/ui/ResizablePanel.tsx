@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { clamp, loadSize, saveSize } from "@/lib/layout";
 
@@ -17,7 +17,9 @@ interface Props {
 export function ResizablePanel({ id, side, defaultSize, min = 160, max = 900, children, className }: Props) {
   const [size, setSize] = useState(() => clamp(loadSize(id, defaultSize), min, max));
   const sizeRef = useRef(size);
-  sizeRef.current = size;
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
   const horizontal = side === "left" || side === "right";
 
   const onPointerDown = useCallback(

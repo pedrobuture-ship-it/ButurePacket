@@ -9,6 +9,8 @@ use crate::capture::RawPacket;
 #[serde(rename_all = "camelCase")]
 pub struct PacketSummary {
     pub id: u64,
+    /// Conversation this packet belongs to, once the flow engine has seen it.
+    pub flow_id: Option<u64>,
     /// Microseconds since the Unix epoch.
     pub timestamp: i64,
     pub captured_length: u32,
@@ -103,6 +105,7 @@ pub fn summarize_dissection(packet: &RawPacket, d: &Dissection) -> PacketSummary
 
     PacketSummary {
         id: packet.id,
+        flow_id: None,
         timestamp: packet.ts_micros,
         captured_length: packet.captured_len,
         original_length: packet.original_len,

@@ -28,3 +28,21 @@ describe("formatTimestamp", () => {
     expect(formatTimestamp(d.getTime() * 1000)).toBe("14:22:01.210");
   });
 });
+
+import { formatLatency, formatSpan } from "./format";
+
+describe("formatSpan / formatLatency", () => {
+  it("formats flow durations", () => {
+    expect(formatSpan(8_400_000)).toBe("8.4s");
+    expect(formatSpan(125_000_000)).toBe("2m 05s");
+    expect(formatSpan(3_720_000_000)).toBe("1h 02m");
+    expect(formatSpan(-1)).toBe("0.0s");
+  });
+  it("formats latency", () => {
+    expect(formatLatency(null)).toBe("—");
+    expect(formatLatency(340)).toBe("340 µs");
+    expect(formatLatency(21_000)).toBe("21 ms");
+    expect(formatLatency(21_400)).toBe("21.4 ms");
+    expect(formatLatency(250_000)).toBe("250 ms");
+  });
+});

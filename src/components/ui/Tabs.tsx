@@ -23,7 +23,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, className }: Pro
             if (e.key === "ArrowLeft") onChange(tabs[(i - 1 + tabs.length) % tabs.length].id);
           }}
           className={cn(
-            "-mb-px h-8 border-b-2 px-3 text-xs transition-colors duration-150",
+            "-mb-px h-8 shrink-0 whitespace-nowrap border-b-2 px-2.5 text-xs transition-colors duration-150",
             t.id === value ? "border-primary text-fg" : "border-transparent text-muted hover:text-fg",
           )}
         >
