@@ -1,6 +1,6 @@
 import type { MetricBucket, TcpTotals } from "@/types/ipc";
 
-export type SeriesKey = "packets" | "bytes" | "newFlows" | "activeFlows";
+export type SeriesKey = "packets" | "bytes" | "bytesUp" | "bytesDown" | "newFlows" | "activeFlows";
 
 /** Per-second value of a bucket (counts are divided by the seconds it covers; gauges are not). */
 function perSecond(b: MetricBucket, key: SeriesKey): number {

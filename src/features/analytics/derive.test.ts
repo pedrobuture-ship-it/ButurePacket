@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { barFractions, currentRate, latest, seriesValues, summarizeSeries, tcpHealth } from "./derive";
 import type { MetricBucket } from "@/types/ipc";
 
-const b = (sec: number, packets: number, over: Partial<MetricBucket> = {}): MetricBucket => ({ sec, span: 1, packets, bytes: packets * 100, newFlows: 0, activeFlows: 0, retransmissions: 0, resets: 0, duplicateAcks: 0, zeroWindows: 0, ...over });
+const b = (sec: number, packets: number, over: Partial<MetricBucket> = {}): MetricBucket => ({ sec, span: 1, packets, bytes: packets * 100, bytesUp: 0, bytesDown: 0, newFlows: 0, activeFlows: 0, retransmissions: 0, resets: 0, duplicateAcks: 0, zeroWindows: 0, ...over });
 
 describe("analytics derivations", () => {
   it("pads short series on the left", () => {

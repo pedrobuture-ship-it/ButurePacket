@@ -10,7 +10,13 @@ export function useFileDrop() {
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
     let unlisten: (() => void) | undefined;
-    getCurrentWebview()
+    let webview;
+    try {
+      webview = getCurrentWebview();
+    } catch {
+      return; // no webview handle (not running inside the desktop shell)
+    }
+    webview
       .onDragDropEvent((event) => {
         const ui = useUiStore.getState();
         const p = event.payload;

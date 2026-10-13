@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use super::flow::{Flow, SPARK_WINDOW, TcpState};
+use super::flow::{Direction, Flow, SPARK_WINDOW, TcpState};
 use super::input::FlowInput;
 use super::key::{Endpoint, FlowKey};
 use crate::analytics::tls::TlsInfo;
@@ -106,6 +106,8 @@ pub struct Observed {
     pub resets_before: u64,
     pub duplicate_acks_before: u64,
     pub zero_windows_before: u64,
+    /// Which way this packet travelled relative to the side that spoke first.
+    pub direction: Direction,
 }
 
 /// Tracks every conversation seen so far. `observe` is O(1) per packet.
@@ -168,6 +170,7 @@ impl FlowEngine {
             resets_before: 0,
             duplicate_acks_before: 0,
             zero_windows_before: 0,
+            direction: Direction::AtoB,
         };
         if let Some(flow) = self.flows.get_mut(&id) {
             observed.state_before = flow.tcp_state;
@@ -175,6 +178,7 @@ impl FlowEngine {
             observed.resets_before = flow.resets;
             observed.duplicate_acks_before = flow.duplicate_acks;
             observed.zero_windows_before = flow.zero_windows;
+            observed.direction = flow.direction_of(&input.src);
             flow.update(input);
         }
         self.dirty.insert(id);

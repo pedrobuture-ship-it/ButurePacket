@@ -211,6 +211,9 @@ export interface MetricBucket {
   span: number;
   packets: number;
   bytes: number;
+  /** Bytes sent by the side that opened each connection / by the side that answered. */
+  bytesUp: number;
+  bytesDown: number;
   newFlows: number;
   activeFlows: number;
   retransmissions: number;

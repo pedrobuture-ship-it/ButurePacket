@@ -27,6 +27,9 @@ pub struct Bucket {
     pub span: u32,
     pub packets: u64,
     pub bytes: u64,
+    /// Bytes sent by the side that opened each connection / by the side that answered.
+    pub bytes_up: u64,
+    pub bytes_down: u64,
     pub new_flows: u64,
     /// Distinct flows that carried traffic in this second.
     pub active_flows: u64,
@@ -43,6 +46,8 @@ impl Default for Bucket {
             span: 1,
             packets: 0,
             bytes: 0,
+            bytes_up: 0,
+            bytes_down: 0,
             new_flows: 0,
             active_flows: 0,
             retransmissions: 0,
@@ -170,6 +175,10 @@ impl MetricsEngine {
         b.bytes += u64::from(wire_len);
         if let Some((obs, f)) = flow {
             ids = Some(f.id);
+            match obs.direction {
+                crate::flows::Direction::AtoB => b.bytes_up += u64::from(wire_len),
+                crate::flows::Direction::BtoA => b.bytes_down += u64::from(wire_len),
+            }
             b.new_flows += u64::from(obs.is_new);
             let d = |now: u64, before: u64| now.saturating_sub(before);
             b.retransmissions += d(f.retransmissions, obs.retransmissions_before);
@@ -253,6 +262,8 @@ fn downsample(all: &[Bucket], max_points: usize) -> Vec<Bucket> {
                 b.span += c.span;
                 b.packets += c.packets;
                 b.bytes += c.bytes;
+                b.bytes_up += c.bytes_up;
+                b.bytes_down += c.bytes_down;
                 b.new_flows += c.new_flows;
                 b.active_flows = b.active_flows.max(c.active_flows);
                 b.retransmissions += c.retransmissions;
@@ -516,6 +527,17 @@ mod tests {
             (s[1].sec, s[1].packets, s[1].new_flows, s[1].active_flows),
             (11, 1, 0, 1)
         );
+    }
+
+    #[test]
+    fn upload_and_download_follow_the_connection_direction() {
+        let (mut m, mut e) = (MetricsEngine::new(), FlowEngine::default());
+        feed(&mut m, &mut e, udp(SEC, 1000, 100)); // client → server
+        let mut reply = udp(SEC + 1, 1000, 200);
+        std::mem::swap(&mut reply.src, &mut reply.dst); // server → client
+        feed(&mut m, &mut e, reply);
+        let b = &m.series(5)[0];
+        assert_eq!((b.bytes, b.bytes_up, b.bytes_down), (300, 100, 200));
     }
 
     #[test]

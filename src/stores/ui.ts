@@ -34,7 +34,7 @@ const readCollapsed = () => {
 };
 
 export const useUiStore = create<UiStore>((set, get) => ({
-  view: "packets",
+  view: "overview",
   sidebarCollapsed: readCollapsed(),
   dragging: false,
   filterDraft: "",

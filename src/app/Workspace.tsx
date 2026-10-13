@@ -5,6 +5,7 @@ import { DnsView } from "@/features/dns/DnsView";
 import { FlowsView } from "@/features/flows/FlowsView";
 import { TimelineView } from "@/features/timeline/TimelineView";
 import { TopologyView } from "@/features/topology/TopologyView";
+import { OverviewView } from "@/features/overview/OverviewView";
 import { PacketsView } from "@/features/packets/PacketsView";
 import { useUiStore, type ViewId } from "@/stores/ui";
 
@@ -30,7 +31,9 @@ export function Workspace() {
     <main className="flex min-w-0 flex-1 flex-col bg-bg">
       {filterable.includes(view) && <FilterBar />}
       <div className="min-h-0 flex-1" key={view}>
-        {view === "packets" ? (
+        {view === "overview" ? (
+          <OverviewView />
+        ) : view === "packets" ? (
           <PacketsView />
         ) : view === "flows" ? (
           <FlowsView />
