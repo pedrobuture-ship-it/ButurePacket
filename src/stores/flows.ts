@@ -18,6 +18,15 @@ interface FlowsStore {
 }
 
 const PUBLISH_INTERVAL_MS = 250;
+/** Flows kept in the UI; beyond it the least recently seen are dropped. */
+export const MAX_FLOWS = 200_000;
+const EVICT_FRACTION = 0.1;
+
+function evictIfNeeded() {
+  if (flowBuffer.byId.size <= MAX_FLOWS * (1 + EVICT_FRACTION)) return;
+  const byAge = [...flowBuffer.byId.values()].sort((a, b) => a.lastSeenAt - b.lastSeenAt);
+  for (const f of byAge.slice(0, flowBuffer.byId.size - MAX_FLOWS)) flowBuffer.byId.delete(f.id);
+}
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export const useFlowsStore = create<FlowsStore>((set, get) => ({
@@ -25,6 +34,7 @@ export const useFlowsStore = create<FlowsStore>((set, get) => ({
   selectedId: null,
   upsert: (flows) => {
     for (const f of flows) flowBuffer.byId.set(f.id, f);
+    evictIfNeeded();
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;

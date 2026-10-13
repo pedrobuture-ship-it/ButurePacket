@@ -6,8 +6,14 @@ import type { PacketSummary } from "@/types/ipc";
  * 50ms batch would be O(n) at hundreds of thousands of rows. The zustand store
  * only carries a cheap change counter that views subscribe to.
  */
+/** Rows kept in the UI. Older ones are dropped (the backend and database still have them). */
+export const MAX_ROWS = 1_000_000;
+const TRIM_CHUNK = 100_000;
+
 export const packetBuffer = {
   rows: [] as PacketSummary[],
+  /** Bumps whenever rows are removed from the front, invalidating cached row positions. */
+  generation: 0,
 
   get(index: number): PacketSummary | undefined {
     return this.rows[index];
@@ -47,6 +53,10 @@ export const usePacketsStore = create<PacketsStore>((set) => ({
   inspectorOpen: true,
   append: (batch) => {
     for (const p of batch) packetBuffer.rows.push(p);
+    if (packetBuffer.rows.length > MAX_ROWS + TRIM_CHUNK) {
+      packetBuffer.rows.splice(0, packetBuffer.rows.length - MAX_ROWS);
+      packetBuffer.generation++;
+    }
     // Coalesce bursts of batches into one render per frame.
     if (pending) return;
     pending = true;

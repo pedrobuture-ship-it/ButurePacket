@@ -11,6 +11,8 @@ use crate::flows::{Flow, Observed, TcpState};
 
 const MAX_HISTORY: usize = 200_000;
 const MAX_RETX_EVENTS_PER_FLOW: u32 = 20;
+/// Bookkeeping sets are reset beyond this size so hostile traffic can't grow them without bound.
+const MAX_TRACKING_ENTRIES: usize = 1_000_000;
 const DNS_SPIKE_MICROS: i64 = 100_000;
 const TCP_SPIKE_MICROS: i64 = 200_000;
 const BURST_MIN_BYTES: u64 = 1_000_000;
@@ -108,6 +110,7 @@ impl EventEngine {
         title: impl Into<String>,
         detail: Option<String>,
     ) {
+        self.trim_tracking();
         let ev = TimelineEvent {
             id: self.next_id,
             ts,
@@ -123,6 +126,21 @@ impl EventEngine {
         self.history.push_back(ev);
         while self.history.len() > MAX_HISTORY {
             self.history.pop_front();
+        }
+    }
+
+    fn trim_tracking(&mut self) {
+        if self.retx_events.len() > MAX_TRACKING_ENTRIES {
+            self.retx_events.clear();
+        }
+        for set in [
+            &mut self.dns_query_announced,
+            &mut self.dns_response_announced,
+            &mut self.tls_announced,
+        ] {
+            if set.len() > MAX_TRACKING_ENTRIES {
+                set.clear();
+            }
         }
     }
 

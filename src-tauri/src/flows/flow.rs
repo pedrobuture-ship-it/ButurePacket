@@ -39,7 +39,8 @@ struct DirState {
     fin: bool,
 }
 
-const SPARK_BUCKETS_KEPT: usize = 300;
+/// Just over the 60 s sparkline window; more would cost memory per flow for nothing.
+const SPARK_BUCKETS_KEPT: usize = 64;
 pub const SPARK_WINDOW: usize = 60;
 
 #[derive(Debug, Clone)]

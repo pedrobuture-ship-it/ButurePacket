@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { packetBuffer, usePacketsStore } from "./packets";
+import { MAX_ROWS, packetBuffer, usePacketsStore } from "./packets";
 import type { PacketSummary } from "@/types/ipc";
 
 const row = (id: number): PacketSummary => ({
@@ -49,5 +49,17 @@ describe("packets store", () => {
     usePacketsStore.getState().clear();
     expect(packetBuffer.rows).toHaveLength(0);
     expect(usePacketsStore.getState().selectedId).toBeNull();
+  });
+
+  it("drops the oldest rows beyond the cap and invalidates cached positions", () => {
+    const g0 = packetBuffer.generation;
+    const many = Array.from({ length: MAX_ROWS + 100_001 }, (_, i) => row(i + 1));
+    usePacketsStore.getState().append(many);
+    expect(packetBuffer.rows.length).toBe(MAX_ROWS);
+    expect(packetBuffer.rows[0].id).toBe(100_002);
+    expect(packetBuffer.rows.at(-1)?.id).toBe(MAX_ROWS + 100_001);
+    expect(packetBuffer.generation).toBe(g0 + 1);
+    expect(packetBuffer.indexOfId(100_002)).toBe(0);
+    expect(packetBuffer.indexOfId(5)).toBe(-1);
   });
 });

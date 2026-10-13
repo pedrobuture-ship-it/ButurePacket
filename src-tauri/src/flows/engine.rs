@@ -7,7 +7,8 @@ use super::input::FlowInput;
 use super::key::{Endpoint, FlowKey};
 use crate::analytics::tls::TlsInfo;
 
-pub const DEFAULT_MAX_FLOWS: usize = 500_000;
+/// Flow table limit; the least recently seen flows are dropped beyond it.
+pub const DEFAULT_MAX_FLOWS: usize = 200_000;
 
 /// Serializable snapshot of a flow for the UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

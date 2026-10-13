@@ -9,6 +9,9 @@ use crate::protocols::tls::{self, CertMeta, TlsParse};
 
 const MAX_STREAM_BYTES: usize = 32 * 1024;
 const MAX_TRACKED_FLOWS: usize = 100_000;
+/// Total handshake bytes buffered across all flows. Streams that would exceed it are dropped, so
+/// many half-open connections can't exhaust memory.
+const MAX_TOTAL_BUFFERED: usize = 64 * 1024 * 1024;
 
 /// What is known about a flow's TLS session. Absent fields mean "not observable", never "guessed".
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -84,6 +87,8 @@ struct FlowTls {
 #[derive(Debug, Default)]
 pub struct TlsTracker {
     flows: HashMap<u64, FlowTls>,
+    /// Bytes currently held in all streams' buffers.
+    buffered: usize,
 }
 
 impl TlsTracker {
@@ -108,7 +113,21 @@ impl TlsTracker {
         }
         let state = self.flows.get_mut(&flow_id)?;
         let stream = &mut state.streams[usize::from(!a_to_b)];
-        if !stream.push(seq, payload) {
+        let held = stream.data.len();
+        if self.buffered + payload.len() > MAX_TOTAL_BUFFERED {
+            // Out of budget: give this stream's bytes back and stop collecting from it.
+            self.buffered -= held;
+            stream.data = Vec::new();
+            stream.closed = true;
+            return None;
+        }
+        let pushed = stream.push(seq, payload);
+        self.buffered += stream.data.len() - held;
+        if !pushed {
+            if stream.closed {
+                self.buffered -= stream.data.len();
+                stream.data = Vec::new();
+            }
             return None;
         }
         let parsed = tls::parse(&stream.data);
@@ -118,6 +137,7 @@ impl TlsTracker {
         {
             stream.closed = true;
             // Keep the (now useless) buffer from lingering.
+            self.buffered -= stream.data.len();
             stream.data = Vec::new();
         }
         let before = state.info.clone();
@@ -134,6 +154,7 @@ impl TlsTracker {
 
     pub fn clear(&mut self) {
         self.flows.clear();
+        self.buffered = 0;
     }
 }
 
@@ -273,6 +294,36 @@ mod tests {
             .observe(1, true, T0 + 1, start.wrapping_add(30), b)
             .unwrap();
         assert_eq!(info.sni.as_deref(), Some("wrap.example"));
+    }
+
+    #[test]
+    fn buffered_bytes_are_accounted_and_released() {
+        let mut t = TlsTracker::default();
+        let hello = client_hello("a.example", &[]);
+        let (a, b) = hello.split_at(30);
+        t.observe(1, true, T0, 100, a);
+        assert_eq!(t.buffered, 30);
+        t.observe(1, true, T0 + 1, 130, b); // completes: buffer released
+        assert_eq!(t.buffered, 0);
+        // a gap closes the stream and releases its bytes too
+        t.observe(2, true, T0, 100, a);
+        assert_eq!(t.buffered, 30);
+        t.observe(2, true, T0 + 1, 9999, b);
+        assert_eq!(t.buffered, 0);
+        t.clear();
+        assert_eq!(t.buffered, 0);
+    }
+
+    #[test]
+    fn exhausting_the_global_budget_stops_collection_without_growing() {
+        let mut t = TlsTracker {
+            buffered: MAX_TOTAL_BUFFERED - 10,
+            ..Default::default()
+        };
+        let hello = client_hello("a.example", &[]);
+        assert!(t.observe(1, true, T0, 100, &hello[..30]).is_none());
+        assert_eq!(t.buffered, MAX_TOTAL_BUFFERED - 10);
+        assert!(t.info(1).is_none());
     }
 
     #[test]

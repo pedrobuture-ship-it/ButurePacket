@@ -1,6 +1,7 @@
 import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
 import { AnalyticsView } from "@/features/analytics/AnalyticsView";
+import { CaptureView } from "@/features/capture/CaptureView";
 import { DnsView } from "@/features/dns/DnsView";
 import { FlowsView } from "@/features/flows/FlowsView";
 import { TimelineView } from "@/features/timeline/TimelineView";
@@ -33,6 +34,8 @@ export function Workspace() {
       <div className="min-h-0 flex-1" key={view}>
         {view === "overview" ? (
           <OverviewView />
+        ) : view === "capture" ? (
+          <CaptureView />
         ) : view === "packets" ? (
           <PacketsView />
         ) : view === "flows" ? (

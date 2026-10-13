@@ -6,6 +6,7 @@ import { flowProtocolLabel, endpointText } from "@/features/flows/flowText";
 import { StoryPanel } from "@/features/story/StoryPanel";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatCount, formatDuration } from "@/lib/format";
+import { sanitizeText } from "@/lib/sanitize";
 import { protocolTone } from "@/lib/protocolColors";
 import { formatClock } from "@/features/timeline/model";
 import { latest, seriesValues } from "@/features/analytics/derive";
@@ -22,7 +23,7 @@ function Header() {
   return (
     <header className="flex items-center gap-4 border-b border-line px-4 py-3">
       <ModeBadge />
-      <span className="font-mono text-sm text-fg">{mode === "live" ? (selectedInterface ?? "—") : (fileName ?? "—")}</span>
+      <span className="font-mono text-sm text-fg">{sanitizeText(mode === "live" ? (selectedInterface ?? "—") : (fileName ?? "—"))}</span>
       <span className="font-mono text-sm text-muted">{formatDuration(stats.durationMs)}</span>
     </header>
   );

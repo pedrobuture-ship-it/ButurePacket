@@ -1,6 +1,7 @@
 //! Background writer: batches of derived records are committed from a dedicated thread so
 //! parsing never waits on disk, and many batches share one transaction.
 
+use crate::util::LockRecover;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -138,7 +139,7 @@ impl StorageWriter {
             dropped_jobs: self.shared.dropped_jobs.load(Ordering::Relaxed),
             bytes: self.shared.bytes.load(Ordering::Relaxed),
             limit_reached: self.shared.limit_reached.load(Ordering::Relaxed),
-            error: self.shared.error.lock().unwrap().clone(),
+            error: self.shared.error.lock_recover().clone(),
         }
     }
 
@@ -205,7 +206,7 @@ fn writer_loop(mut db: Database, rx: Receiver<Msg>, config: StorageConfig, share
     let mut last_size_check = Instant::now();
     let mut failed = false;
     let record = |e: &CaptureError| {
-        let mut slot = shared.error.lock().unwrap();
+        let mut slot = shared.error.lock_recover();
         slot.get_or_insert_with(|| e.to_string());
     };
     loop {
@@ -258,8 +259,7 @@ fn writer_loop(mut db: Database, rx: Receiver<Msg>, config: StorageConfig, share
                 Err(CaptureError::Storage(
                     shared
                         .error
-                        .lock()
-                        .unwrap()
+                        .lock_recover()
                         .clone()
                         .unwrap_or_else(|| "write failed".into()),
                 ))

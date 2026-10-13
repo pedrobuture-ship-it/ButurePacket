@@ -1,3 +1,4 @@
+use crate::util::LockRecover;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -53,8 +54,7 @@ impl CaptureState {
     /// A live capture is running or paused.
     pub fn live_active(&self) -> bool {
         self.session
-            .lock()
-            .unwrap()
+            .lock_recover()
             .as_ref()
             .is_some_and(|s| matches!(s.state(), SessionState::Running | SessionState::Paused))
     }
@@ -111,13 +111,26 @@ impl CaptureSink for TauriSink {
         if packets.is_empty() {
             return;
         }
-        emit_processed(&self.app, self.pipeline.process(packets));
+        match self.pipeline.process_guarded(packets) {
+            Ok(out) => emit_processed(&self.app, out),
+            Err(msg) => {
+                let _ = self.app.emit(
+                    "capture://notice",
+                    super::files::NoticePayload {
+                        tone: "error",
+                        text: format!(
+                            "An internal error occurred while analysing a batch of packets; the batch was skipped. ({msg})"
+                        ),
+                    },
+                );
+            }
+        }
     }
 
     fn on_stats(&self, stats: &StatsSnapshot) {
         let _ = self.app.emit("capture://stats", stats);
         // Analytics are recomputed at most once a second: they scan the flow table.
-        let mut last = self.last_analytics.lock().unwrap();
+        let mut last = self.last_analytics.lock_recover();
         if last.elapsed() >= ANALYTICS_INTERVAL {
             *last = Instant::now();
             let _ = self
@@ -149,7 +162,7 @@ pub fn capture_start(
     state: State<'_, CaptureState>,
     interface: String,
 ) -> Result<(), IpcError> {
-    let mut slot = state.session.lock().unwrap();
+    let mut slot = state.session.lock_recover();
     if let Some(existing) = slot.as_ref()
         && matches!(
             existing.state(),
@@ -181,7 +194,7 @@ fn with_session<T>(
     state: &State<'_, CaptureState>,
     f: impl FnOnce(&mut CaptureSession) -> Result<T, CaptureError>,
 ) -> Result<T, IpcError> {
-    let mut slot = state.session.lock().unwrap();
+    let mut slot = state.session.lock_recover();
     match slot.as_mut() {
         Some(s) => f(s).map_err(Into::into),
         None => Err(CaptureError::NotRunning.into()),
@@ -212,7 +225,7 @@ pub fn capture_stop(app: AppHandle, state: State<'_, CaptureState>) -> Result<()
 /// Raw bytes of one packet, fetched only when the UI asks (inspector / hex view).
 #[tauri::command]
 pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u8>, IpcError> {
-    let store = state.pipeline.store.lock().unwrap();
+    let store = state.pipeline.store.lock_recover();
     store
         .get(id)
         .map(|p| p.data.clone())
@@ -237,7 +250,7 @@ pub fn get_packet_detail(
     state: State<'_, CaptureState>,
     id: u64,
 ) -> Result<PacketDetail, IpcError> {
-    let store = state.pipeline.store.lock().unwrap();
+    let store = state.pipeline.store.lock_recover();
     store.get(id).map(build_detail).ok_or_else(|| IpcError {
         kind: "packetNotFound".into(),
         message: format!("Packet #{id} is no longer available."),
@@ -246,7 +259,7 @@ pub fn get_packet_detail(
 
 #[tauri::command]
 pub fn get_flows(state: State<'_, CaptureState>) -> Vec<FlowView> {
-    state.pipeline.flows.lock().unwrap().snapshot()
+    state.pipeline.flows.lock_recover().snapshot()
 }
 
 #[derive(Serialize)]
@@ -258,7 +271,7 @@ pub struct DnsSnapshot {
 
 #[tauri::command]
 pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
-    let dns = state.pipeline.dns.lock().unwrap();
+    let dns = state.pipeline.dns.lock_recover();
     DnsSnapshot {
         transactions: dns.snapshot(),
         stats: dns.stats(),
@@ -267,7 +280,7 @@ pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
 
 #[tauri::command]
 pub fn get_events(state: State<'_, CaptureState>) -> Vec<TimelineEvent> {
-    state.pipeline.events.lock().unwrap().snapshot()
+    state.pipeline.events.lock_recover().snapshot()
 }
 
 #[tauri::command]
@@ -277,4 +290,13 @@ pub fn get_analytics(
     state
         .pipeline
         .analytics(state.offline_mode.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+/// Whether live capture is permitted, with guidance when it is not. Read-only: nothing is elevated.
+#[tauri::command]
+pub async fn check_capture_permission()
+-> Result<crate::capture::permission::PermissionReport, IpcError> {
+    tauri::async_runtime::spawn_blocking(crate::capture::permission::check)
+        .await
+        .map_err(|e| CaptureError::Backend(e.to_string()).into())
 }

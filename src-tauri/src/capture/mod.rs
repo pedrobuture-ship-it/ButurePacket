@@ -6,6 +6,7 @@ pub mod interfaces;
 pub mod linktype;
 pub mod offline;
 pub mod packet;
+pub mod permission;
 pub mod session;
 pub mod source;
 pub mod stats;

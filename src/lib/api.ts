@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AnalyticsSnapshot, AppInfo, OpenProgress, PacketPage, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
+import type { AnalyticsSnapshot, AppInfo, NoticePayload, OpenProgress, PacketPage, PermissionReport, SaveResult, StorageStatus, StoredPacketQuery, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
 import type { CaptureStats, InterfaceInfo } from "@/types/capture";
 
 /** Every backend command is declared here: name → [args, result]. */
@@ -17,9 +17,10 @@ interface Commands {
   get_flows: [Record<string, never>, FlowView[]];
   get_events: [Record<string, never>, TimelineEvent[]];
   get_analytics: [Record<string, never>, AnalyticsSnapshot];
-  open_capture: [{ path: string }, void];
+  pick_and_open_capture: [Record<string, never>, string | null];
+  pick_and_save_capture: [Record<string, never>, SaveResult | null];
+  check_capture_permission: [Record<string, never>, PermissionReport];
   cancel_open: [Record<string, never>, void];
-  save_capture: [{ path: string }, SaveResult];
   query_stored_packets: [{ query: StoredPacketQuery }, PacketPage];
   set_persistence: [{ enabled: boolean }, void];
   get_dns: [Record<string, never>, { transactions: DnsTransaction[]; stats: DnsStats }];
@@ -36,6 +37,7 @@ interface Events {
   "capture://analytics": AnalyticsSnapshot;
   "capture://progress": OpenProgress;
   "capture://storage": StorageStatus;
+  "capture://notice": NoticePayload;
 }
 
 export function isIpcError(e: unknown): e is IpcError {
@@ -73,11 +75,13 @@ export const api = {
   captureStop: () => call("capture_stop", {}),
   getPacketBytes: (id: number) => call("get_packet_bytes", { id }),
   getDns: () => call("get_dns", {}),
-  openCapture: (path: string) => call("open_capture", { path }),
+  /** Native file dialog + analysis; the web view never supplies a path. */
+  pickAndOpenCapture: () => call("pick_and_open_capture", {}),
+  pickAndSaveCapture: () => call("pick_and_save_capture", {}),
+  checkCapturePermission: () => call("check_capture_permission", {}),
   cancelOpen: () => call("cancel_open", {}),
   queryStoredPackets: (query: StoredPacketQuery) => call("query_stored_packets", { query }),
   setPersistence: (enabled: boolean) => call("set_persistence", { enabled }),
-  saveCapture: (path: string) => call("save_capture", { path }),
   getAnalytics: () => call("get_analytics", {}),
   getEvents: () => call("get_events", {}),
   getFlows: () => call("get_flows", {}),

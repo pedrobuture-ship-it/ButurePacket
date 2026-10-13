@@ -1,5 +1,6 @@
 //! Packet → parser → flow engine → (later: correlation, analytics). One place where a batch is processed.
 
+use crate::util::LockRecover;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -44,11 +45,11 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn process(&self, batch: Vec<RawPacket>) -> Processed {
         let mut packets = Vec::with_capacity(batch.len());
-        let mut flows = self.flows.lock().unwrap();
-        let mut dns = self.dns.lock().unwrap();
-        let mut tls = self.tls.lock().unwrap();
-        let mut events = self.events.lock().unwrap();
-        let mut metrics = self.metrics.lock().unwrap();
+        let mut flows = self.flows.lock_recover();
+        let mut dns = self.dns.lock_recover();
+        let mut tls = self.tls.lock_recover();
+        let mut events = self.events.lock_recover();
+        let mut metrics = self.metrics.lock_recover();
         for raw in &batch {
             let d = dissect(&raw.data);
             let mut summary = summarize_dissection(raw, &d);
@@ -109,12 +110,12 @@ impl Pipeline {
         let mut new_events = events.take_new();
         new_events.truncate(MAX_EVENTS_PER_BATCH);
         drop((flows, dns, tls, events, metrics));
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock_recover();
         for raw in batch {
             store.push(raw);
         }
         let packets = Arc::new(packets);
-        if let Some(w) = self.storage.lock().unwrap().as_ref() {
+        if let Some(w) = self.storage.lock_recover().as_ref() {
             w.submit(Job::Packets(packets.clone()));
             if !changed.is_empty() {
                 w.submit(Job::Flows(changed.clone()));
@@ -135,6 +136,20 @@ impl Pipeline {
         }
     }
 
+    /// `process`, but a bug that panics on some unforeseen packet skips that batch instead of
+    /// taking down the capture thread. The panic message is returned for reporting.
+    pub fn process_guarded(&self, batch: Vec<RawPacket>) -> Result<Processed, String> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.process(batch))).map_err(
+            |payload| {
+                payload
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "unknown error".to_string())
+            },
+        )
+    }
+
     /// Starts persisting everything processed from now on into the database at `path`.
     pub fn attach_storage(
         &self,
@@ -145,7 +160,7 @@ impl Pipeline {
         let db = Database::open(path)?;
         db.set_meta("source", source)?;
         let writer = StorageWriter::start(db, config)?;
-        if let Some(old) = self.storage.lock().unwrap().replace(writer) {
+        if let Some(old) = self.storage.lock_recover().replace(writer) {
             let _ = old.finish();
         }
         Ok(())
@@ -153,23 +168,22 @@ impl Pipeline {
 
     /// Flushes and closes the database, if one is attached.
     pub fn detach_storage(&self) -> Option<Result<StorageStatus, CaptureError>> {
-        let writer = self.storage.lock().unwrap().take()?;
+        let writer = self.storage.lock_recover().take()?;
         Some(writer.finish())
     }
 
     pub fn storage_status(&self) -> Option<StorageStatus> {
         self.storage
-            .lock()
-            .unwrap()
+            .lock_recover()
             .as_ref()
             .map(StorageWriter::status)
     }
 
     /// Rolling metrics, rankings and potential problems for the Analytics screen.
     pub fn analytics(&self, whole: bool) -> AnalyticsSnapshot {
-        let flows = self.flows.lock().unwrap();
-        let dns = self.dns.lock().unwrap();
-        let metrics = self.metrics.lock().unwrap();
+        let flows = self.flows.lock_recover();
+        let dns = self.dns.lock_recover();
+        let metrics = self.metrics.lock_recover();
         metrics.snapshot(
             flows.snapshot_flows(),
             dns.stats(),
@@ -179,12 +193,12 @@ impl Pipeline {
     }
 
     pub fn clear(&self) {
-        self.store.lock().unwrap().clear();
-        self.flows.lock().unwrap().clear();
-        self.dns.lock().unwrap().clear();
-        self.tls.lock().unwrap().clear();
-        self.events.lock().unwrap().clear();
-        self.metrics.lock().unwrap().clear();
+        self.store.lock_recover().clear();
+        self.flows.lock_recover().clear();
+        self.dns.lock_recover().clear();
+        self.tls.lock_recover().clear();
+        self.events.lock_recover().clear();
+        self.metrics.lock_recover().clear();
     }
 }
 
@@ -235,7 +249,7 @@ mod tests {
         assert_eq!(out.packets[0].flow_id, out.packets[1].flow_id);
         assert_ne!(out.packets[0].flow_id, out.packets[2].flow_id);
         assert!(out.packets[0].flow_id.is_some());
-        assert_eq!(p.store.lock().unwrap().get(2).unwrap().id, 2);
+        assert_eq!(p.store.lock_recover().get(2).unwrap().id, 2);
         // second batch only reports flows that changed
         let out = p.process(vec![frame(4, 6000)]);
         assert_eq!(out.flows.len(), 1);
@@ -361,8 +375,8 @@ mod tests {
         let p = Pipeline::default();
         p.process(vec![frame(1, 5000)]);
         p.clear();
-        assert!(p.store.lock().unwrap().is_empty());
-        assert!(p.flows.lock().unwrap().is_empty());
+        assert!(p.store.lock_recover().is_empty());
+        assert!(p.flows.lock_recover().is_empty());
     }
 
     /// A realistic capture file (DNS lookup, TCP handshake, TLS hello, close) read from disk
@@ -470,7 +484,7 @@ mod tests {
         impl OfflineSink for Sink<'_> {
             fn progress(&self, _: &Progress) {}
             fn batch(&self, packets: Vec<RawPacket>) {
-                self.1.lock().unwrap().push(self.0.process(packets));
+                self.1.lock_recover().push(self.0.process(packets));
             }
         }
         let p = Pipeline::default();
@@ -481,7 +495,7 @@ mod tests {
         let out = offline::run(&path, &AtomicBool::new(false), &sink).unwrap();
         assert_eq!(out.packets, 8);
 
-        let outs = sink.1.lock().unwrap();
+        let outs = sink.1.lock_recover();
         let packets: Vec<_> = outs.iter().flat_map(|o| o.packets.iter()).collect();
         assert_eq!(packets.len(), 8);
         assert_eq!(packets[0].info, "Standard query A api.github.com");
@@ -489,7 +503,7 @@ mod tests {
         assert_eq!(packets[5].info, "Client Hello (SNI: api.github.com)");
         assert_eq!(packets[6].info, "Server Hello");
 
-        let flows = p.flows.lock().unwrap().snapshot();
+        let flows = p.flows.lock_recover().snapshot();
         let tcp_flow = flows.iter().find(|f| f.protocol == "TCP").unwrap();
         assert_eq!(tcp_flow.latency, Some(20_000)); // SYN → SYN/ACK
         assert_eq!(tcp_flow.domains, vec!["api.github.com"]); // from the earlier DNS answer

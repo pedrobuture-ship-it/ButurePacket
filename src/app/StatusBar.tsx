@@ -5,6 +5,7 @@ import { StatusIndicator, type Status } from "@/components/ui";
 import { useCaptureStore } from "@/stores/capture";
 import { useStorageStore } from "@/stores/storage";
 import { useUiStore } from "@/stores/ui";
+import { sanitizeText } from "@/lib/sanitize";
 import { formatBytes, formatCount, formatDuration, formatPercent } from "@/lib/format";
 
 const statusOf: Record<string, { status: Status; label: string }> = {
@@ -36,7 +37,7 @@ export function StatusBar() {
   const storage = useStorageStore((s) => s.status);
   const now = useClock();
   const s = statusOf[state];
-  const where = mode === "live" ? `on ${selectedInterface ?? "—"}` : `· ${fileName ?? "file"}`;
+  const where = mode === "live" ? `on ${selectedInterface ?? "—"}` : `· ${sanitizeText(fileName ?? "file")}`;
   return (
     <footer className="flex h-7 shrink-0 items-center gap-5 border-t border-line bg-surface px-4 font-mono text-[11px] text-muted">
       <StatusIndicator status={s.status} label={`${s.label} ${where}`} />

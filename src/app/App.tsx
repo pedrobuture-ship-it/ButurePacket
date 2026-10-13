@@ -4,11 +4,13 @@ import { Titlebar } from "@/app/Titlebar";
 import { Workspace } from "@/app/Workspace";
 import { DropOverlay, Notices, OpenProgressCard } from "@/app/Overlays";
 import { useFileDrop } from "@/hooks/useFileDrop";
+import { usePermissionCheck } from "@/hooks/usePermissionCheck";
 import { useCaptureEvents } from "@/hooks/useCaptureEvents";
 
 export function App() {
   useCaptureEvents();
   useFileDrop();
+  usePermissionCheck();
   return (
     <div className="flex h-full flex-col">
       <Titlebar />

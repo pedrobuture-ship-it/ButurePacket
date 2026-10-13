@@ -1,3 +1,4 @@
+use crate::util::LockRecover;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -64,7 +65,7 @@ struct Shared {
 impl Shared {
     fn set_state(&self, next: SessionState, err: Option<CaptureError>, sink: &dyn CaptureSink) {
         {
-            let mut s = self.state.lock().unwrap();
+            let mut s = self.state.lock_recover();
             *s = (next, err.clone());
         }
         sink.on_state(next, err.as_ref());
@@ -116,7 +117,7 @@ impl CaptureSession {
     }
 
     pub fn state(&self) -> SessionState {
-        self.shared.state.lock().unwrap().0
+        self.shared.state.lock_recover().0
     }
 
     pub fn pause(&self) -> Result<(), CaptureError> {
@@ -129,7 +130,7 @@ impl CaptureSession {
 
     fn transition(&self, from: SessionState, to: SessionState) -> Result<(), CaptureError> {
         {
-            let mut s = self.shared.state.lock().unwrap();
+            let mut s = self.shared.state.lock_recover();
             if s.0 != from {
                 return Err(CaptureError::NotRunning);
             }
@@ -166,11 +167,11 @@ fn reader_loop(mut source: Box<dyn PacketSource>, shared: &Shared, sink: &dyn Ca
     while !shared.stop.load(Ordering::Relaxed) {
         match source.next_packet() {
             Ok(Some(mut packet)) => {
-                if shared.state.lock().unwrap().0 != SessionState::Running {
+                if shared.state.lock_recover().0 != SessionState::Running {
                     continue; // paused: read and discard so the kernel buffer doesn't overflow
                 }
                 let size = packet.mem_size();
-                let mut buf = shared.buffer.lock().unwrap();
+                let mut buf = shared.buffer.lock_recover();
                 if buf.bytes + size > shared.config.max_buffer_bytes {
                     shared
                         .counters
@@ -225,7 +226,7 @@ fn batcher_loop(shared: &Shared, sink: &dyn CaptureSink) {
 
     loop {
         {
-            let guard = shared.wake.0.lock().unwrap();
+            let guard = shared.wake.0.lock_recover();
             if !shared.reader_done.load(Ordering::SeqCst) {
                 let _ = shared
                     .wake
@@ -237,12 +238,12 @@ fn batcher_loop(shared: &Shared, sink: &dyn CaptureSink) {
         let now = Instant::now();
         let tick = now.duration_since(last_tick);
         last_tick = now;
-        if shared.state.lock().unwrap().0 == SessionState::Running {
+        if shared.state.lock_recover().0 == SessionState::Running {
             running_time += tick;
         }
 
         let batch: Vec<RawPacket> = {
-            let mut buf = shared.buffer.lock().unwrap();
+            let mut buf = shared.buffer.lock_recover();
             buf.bytes = 0;
             shared.counters.buffer_bytes.store(0, Ordering::Relaxed);
             buf.packets.drain(..).collect()
@@ -273,13 +274,13 @@ fn batcher_loop(shared: &Shared, sink: &dyn CaptureSink) {
         });
 
         if shared.reader_done.load(Ordering::SeqCst)
-            && shared.buffer.lock().unwrap().packets.is_empty()
+            && shared.buffer.lock_recover().packets.is_empty()
         {
             break;
         }
     }
     let _ = started;
-    let (state, err) = shared.state.lock().unwrap().clone();
+    let (state, err) = shared.state.lock_recover().clone();
     if matches!(state, SessionState::Running | SessionState::Paused) {
         // Reader ended on its own (finite source): the capture is complete.
         shared.set_state(SessionState::Stopped, err, sink);
@@ -336,13 +337,13 @@ pub(crate) mod tests {
     impl CaptureSink for TestSink {
         fn on_batch(&self, packets: Vec<RawPacket>) {
             self.batches.fetch_add(1, Ordering::SeqCst);
-            self.received.lock().unwrap().extend(packets);
+            self.received.lock_recover().extend(packets);
         }
         fn on_stats(&self, stats: &StatsSnapshot) {
-            *self.last_stats.lock().unwrap() = Some(stats.clone());
+            *self.last_stats.lock_recover() = Some(stats.clone());
         }
         fn on_state(&self, state: SessionState, _: Option<&CaptureError>) {
-            self.states.lock().unwrap().push(state);
+            self.states.lock_recover().push(state);
         }
     }
 
@@ -372,10 +373,10 @@ pub(crate) mod tests {
         );
         wait_until(|| s.state() == SessionState::Stopped);
         s.stop();
-        let got = sink.received.lock().unwrap();
+        let got = sink.received.lock_recover();
         assert_eq!(got.len(), 500);
         assert!(got.iter().enumerate().all(|(i, p)| p.id == i as u64 + 1));
-        let stats = sink.last_stats.lock().unwrap().clone().unwrap();
+        let stats = sink.last_stats.lock_recover().clone().unwrap();
         assert_eq!(stats.packets, 500);
         assert_eq!(stats.bytes, 500 * 64);
         assert_eq!(stats.dropped, 0);
@@ -391,7 +392,7 @@ pub(crate) mod tests {
         );
         wait_until(|| s.state() == SessionState::Stopped);
         s.stop();
-        assert_eq!(sink.received.lock().unwrap().len(), 2000);
+        assert_eq!(sink.received.lock_recover().len(), 2000);
         assert!(
             sink.batches.load(Ordering::SeqCst) < 200,
             "expected batching"
@@ -415,7 +416,7 @@ pub(crate) mod tests {
         assert_eq!(s.resume(), Err(CaptureError::NotRunning));
         s.stop();
         assert_eq!(s.state(), SessionState::Stopped);
-        let states = sink.states.lock().unwrap().clone();
+        let states = sink.states.lock_recover().clone();
         assert_eq!(
             states,
             vec![
@@ -439,7 +440,7 @@ pub(crate) mod tests {
         let dropped = s.shared.counters.dropped();
         s.stop();
         assert!(dropped > 0);
-        let accepted = sink.received.lock().unwrap().len() as u64;
+        let accepted = sink.received.lock_recover().len() as u64;
         assert_eq!(accepted + dropped, 100);
     }
 
@@ -467,6 +468,6 @@ pub(crate) mod tests {
         let mut s = CaptureSession::start(source(50, 10, false), sink.clone(), cfg);
         wait_until(|| s.shared.counters.packets.load(Ordering::SeqCst) == 50);
         s.stop();
-        assert_eq!(sink.received.lock().unwrap().len(), 50);
+        assert_eq!(sink.received.lock_recover().len(), 50);
     }
 }

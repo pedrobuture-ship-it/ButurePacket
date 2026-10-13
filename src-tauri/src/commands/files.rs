@@ -1,5 +1,6 @@
 //! Opening and saving capture files.
 
+use crate::util::LockRecover;
 use std::fs;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use super::capture::{CaptureState, emit_processed};
 use super::error::IpcError;
@@ -79,7 +81,19 @@ impl OfflineSink for FileSink {
             packets.first().map(|p| p.ts_micros),
             packets.last().map(|p| p.ts_micros),
         );
-        let mut out = self.pipeline.process(packets);
+        let mut out = match self.pipeline.process_guarded(packets) {
+            Ok(out) => out,
+            Err(msg) => {
+                let _ = self.app.emit(
+                    "capture://notice",
+                    NoticePayload {
+                        tone: "error",
+                        text: format!("An internal error occurred while analysing a batch of packets; the batch was skipped. ({msg})"),
+                    },
+                );
+                return;
+            }
+        };
         let room =
             usize::try_from(MAX_PACKET_ROWS.saturating_sub(self.sent_rows.load(Ordering::Relaxed)))
                 .unwrap_or(usize::MAX);
@@ -93,7 +107,7 @@ impl OfflineSink for FileSink {
 
         let total_packets = self.packets.fetch_add(n, Ordering::Relaxed) + n;
         let total_bytes = self.bytes.fetch_add(bytes, Ordering::Relaxed) + bytes;
-        let mut first_ts = self.first_ts.lock().unwrap();
+        let mut first_ts = self.first_ts.lock_recover();
         let start = *first_ts.get_or_insert(first.unwrap_or(0));
         if let Some(l) = last {
             self.last_ts
@@ -112,7 +126,7 @@ impl OfflineSink for FileSink {
                 ..Default::default()
             },
         );
-        let mut last = self.last_analytics.lock().unwrap();
+        let mut last = self.last_analytics.lock_recover();
         if last.elapsed() >= std::time::Duration::from_secs(1) {
             *last = Instant::now();
             let _ = self
@@ -127,20 +141,15 @@ fn busy(state: &CaptureState) -> bool {
     state.offline_running.load(Ordering::SeqCst) || state.live_active()
 }
 
-#[tauri::command]
-pub fn open_capture(
-    app: AppHandle,
-    state: State<'_, CaptureState>,
-    path: String,
-) -> Result<(), IpcError> {
-    if busy(&state) {
+/// Begins analysing a capture file in the background. Called only with paths the user chose
+/// through the native file dialog or by dropping a file; the web view can never supply a path.
+pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result<(), CaptureError> {
+    if busy(state) {
         return Err(CaptureError::Busy(
             "Stop the current capture or wait for the open file to finish before opening another."
                 .into(),
-        )
-        .into());
+        ));
     }
-    let path = PathBuf::from(path);
     let validated = offline::validate_input_path(&path)?;
     let file_name = validated
         .file_name()
@@ -149,9 +158,9 @@ pub fn open_capture(
 
     state.pipeline.clear();
     state.offline_mode.store(true, Ordering::SeqCst);
-    super::storage::attach(&app, &state, false, &file_name);
+    super::storage::attach(&app, state, false, &file_name);
     let cancel = Arc::new(AtomicBool::new(false));
-    *state.offline_cancel.lock().unwrap() = Some(cancel.clone());
+    *state.offline_cancel.lock_recover() = Some(cancel.clone());
     state.offline_running.store(true, Ordering::SeqCst);
 
     let pipeline = state.pipeline.clone();
@@ -191,13 +200,13 @@ pub fn open_capture(
             );
             running.store(false, Ordering::SeqCst);
         })
-        .map_err(|e| IpcError::from(CaptureError::Io(e.to_string())))?;
+        .map_err(|e| CaptureError::Io(e.to_string()))?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn cancel_open(state: State<'_, CaptureState>) {
-    if let Some(c) = state.offline_cancel.lock().unwrap().as_ref() {
+    if let Some(c) = state.offline_cancel.lock_recover().as_ref() {
         c.store(true, Ordering::SeqCst);
     }
 }
@@ -249,7 +258,7 @@ pub fn save_packets(pipeline: &Pipeline, path: &Path) -> Result<SaveResult, Capt
         let mut evicted = false;
         loop {
             let chunk = {
-                let store = pipeline.store.lock().unwrap();
+                let store = pipeline.store.lock_recover();
                 if next == 0 {
                     evicted = store.first_id().is_some_and(|f| f > 1);
                     next = store.first_id().unwrap_or(1);
@@ -274,9 +283,80 @@ pub fn save_packets(pipeline: &Pipeline, path: &Path) -> Result<SaveResult, Capt
     result
 }
 
+const CAPTURE_EXTENSIONS: &[&str] = &["pcap", "pcapng", "cap"];
+
+/// Shows the native "open" dialog and starts analysing the chosen file. Returns the file name,
+/// or `None` if the user cancelled.
 #[tauri::command]
-pub fn save_capture(state: State<'_, CaptureState>, path: String) -> Result<SaveResult, IpcError> {
-    save_packets(&state.pipeline, Path::new(&path)).map_err(Into::into)
+pub async fn pick_and_open_capture(app: AppHandle) -> Result<Option<String>, IpcError> {
+    let dialog_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .add_filter("Packet captures", CAPTURE_EXTENSIONS)
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|e| CaptureError::Backend(e.to_string()))?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked
+        .into_path()
+        .map_err(|e| CaptureError::Io(e.to_string()))?;
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+    let state = app.state::<CaptureState>();
+    start_open(app.clone(), &state, path)?;
+    Ok(name)
+}
+
+/// Shows the native "save" dialog and writes the retained packets as a PCAP file.
+#[tauri::command]
+pub async fn pick_and_save_capture(app: AppHandle) -> Result<Option<SaveResult>, IpcError> {
+    let dialog_app = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app
+            .dialog()
+            .file()
+            .set_file_name("capture.pcap")
+            .add_filter("PCAP", &["pcap"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| CaptureError::Backend(e.to_string()))?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let path = picked
+        .into_path()
+        .map_err(|e| CaptureError::Io(e.to_string()))?;
+    let pipeline = app.state::<CaptureState>().pipeline.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || save_packets(&pipeline, &path))
+        .await
+        .map_err(|e| CaptureError::Backend(e.to_string()))??;
+    Ok(Some(result))
+}
+
+/// A file dropped onto the window: opened by the backend, never by a path the web view reports.
+pub fn handle_drop(app: &AppHandle, paths: &[PathBuf]) {
+    let Some(path) = paths.first() else { return };
+    let state = app.state::<CaptureState>();
+    if let Err(e) = start_open(app.clone(), &state, path.clone()) {
+        let _ = app.emit(
+            "capture://notice",
+            NoticePayload {
+                tone: "error",
+                text: e.to_string(),
+            },
+        );
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct NoticePayload {
+    pub tone: &'static str,
+    pub text: String,
 }
 
 #[cfg(test)]
@@ -299,7 +379,7 @@ mod tests {
 
     fn pipeline_with(ids: impl Iterator<Item = u64>) -> Pipeline {
         let p = Pipeline::default();
-        let mut store = p.store.lock().unwrap();
+        let mut store = p.store.lock_recover();
         ids.for_each(|i| store.push(raw(i)));
         drop(store);
         p

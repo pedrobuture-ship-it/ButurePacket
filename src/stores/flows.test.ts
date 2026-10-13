@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flowBuffer, useFlowsStore } from "./flows";
+import { MAX_FLOWS, flowBuffer, useFlowsStore } from "./flows";
 import { makeFlow } from "@/features/flows/testFlow";
 
 describe("flows store", () => {
@@ -25,5 +25,13 @@ describe("flows store", () => {
     useFlowsStore.getState().clear();
     expect(flowBuffer.byId.size).toBe(0);
     expect(useFlowsStore.getState().selectedId).toBeNull();
+  });
+
+  it("evicts the least recently seen flows once well past the cap", () => {
+    const many = Array.from({ length: Math.ceil(MAX_FLOWS * 1.1) + 5 }, (_, i) => makeFlow({ id: i + 1, lastSeenAt: i }));
+    useFlowsStore.getState().upsert(many);
+    expect(flowBuffer.byId.size).toBe(MAX_FLOWS);
+    expect(flowBuffer.byId.has(1)).toBe(false);
+    expect(flowBuffer.byId.has(many.length)).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 //! Wiring between capture sessions and the SQLite writer, plus read-only database queries.
 
+use crate::util::LockRecover;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -69,7 +70,7 @@ pub fn attach(app: &AppHandle, state: &CaptureState, live: bool, source: &str) {
     if !state.persist.load(std::sync::atomic::Ordering::SeqCst) {
         return;
     }
-    let Some(dir) = state.data_dir.lock().unwrap().clone() else {
+    let Some(dir) = state.data_dir.lock_recover().clone() else {
         return;
     };
     clean_scratch(&dir);
@@ -81,7 +82,7 @@ pub fn attach(app: &AppHandle, state: &CaptureState, live: bool, source: &str) {
     };
     match state.pipeline.attach_storage(&path, config, source) {
         Ok(()) => {
-            *state.session_db.lock().unwrap() = Some(path);
+            *state.session_db.lock_recover() = Some(path);
             emit_status(app, &state.pipeline);
         }
         Err(e) => {
@@ -121,7 +122,7 @@ pub fn detach(app: &AppHandle, state: &CaptureState) {
 
 fn session_db(state: &CaptureState) -> Result<Database, CaptureError> {
     let path =
-        state.session_db.lock().unwrap().clone().ok_or_else(|| {
+        state.session_db.lock_recover().clone().ok_or_else(|| {
             CaptureError::Storage("there is no stored capture to search yet".into())
         })?;
     Database::open(&path)

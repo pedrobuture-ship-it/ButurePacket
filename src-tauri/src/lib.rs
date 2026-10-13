@@ -1,3 +1,5 @@
+use crate::util::LockRecover;
+
 pub mod analytics;
 pub mod capture;
 pub mod commands;
@@ -7,6 +9,7 @@ pub mod process;
 pub mod protocols;
 pub mod security;
 pub mod storage;
+pub mod util;
 
 pub fn run() {
     tauri::Builder::default()
@@ -17,9 +20,15 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 commands::storage::clean_scratch(&dir);
                 let state = app.state::<commands::capture::CaptureState>();
-                *state.data_dir.lock().unwrap() = Some(dir);
+                *state.data_dir.lock_recover() = Some(dir);
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            use tauri::{DragDropEvent, Manager, WindowEvent};
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                commands::files::handle_drop(window.app_handle(), paths);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
@@ -35,9 +44,10 @@ pub fn run() {
             commands::capture::get_dns,
             commands::capture::get_events,
             commands::capture::get_analytics,
-            commands::files::open_capture,
+            commands::capture::check_capture_permission,
+            commands::files::pick_and_open_capture,
             commands::files::cancel_open,
-            commands::files::save_capture,
+            commands::files::pick_and_save_capture,
             commands::storage::query_stored_packets,
             commands::storage::set_persistence,
         ])

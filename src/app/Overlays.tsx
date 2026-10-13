@@ -3,6 +3,7 @@ import { Button, IconButton } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { captureActions } from "@/lib/captureActions";
 import { formatBytes, formatCount } from "@/lib/format";
+import { sanitizeText } from "@/lib/sanitize";
 import { useCaptureStore } from "@/stores/capture";
 import { useNoticeStore } from "@/stores/notices";
 import { useUiStore } from "@/stores/ui";
@@ -19,8 +20,8 @@ export function OpenProgressCard() {
     <div role="status" aria-live="polite" className="fixed bottom-12 left-1/2 z-40 w-[420px] -translate-x-1/2 rounded border border-line-strong bg-raised p-4 shadow-2xl animate-pop-in">
       <div className="mb-1 flex items-center justify-between">
         <span className="text-[13px] font-medium">{counting ? "Reading Capture" : "Parsing Capture"}</span>
-        <span className="max-w-[200px] truncate font-mono text-[11px] text-muted" title={p.fileName}>
-          {p.fileName}
+        <span className="max-w-[200px] truncate font-mono text-[11px] text-muted" title={sanitizeText(p.fileName)}>
+          {sanitizeText(p.fileName)}
         </span>
       </div>
       <p className="font-mono text-xs text-fg">{counting ? `Scanning ${p.fileBytes ? formatBytes(p.fileBytes) : "file"}…` : `${formatCount(done)} / ${formatCount(total)} packets`}</p>

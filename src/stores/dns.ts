@@ -16,6 +16,8 @@ interface DnsStore {
 }
 
 const PUBLISH_INTERVAL_MS = 250;
+/** Transactions kept in the UI (the backend keeps the same number). */
+export const MAX_TRANSACTIONS = 100_000;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export const useDnsStore = create<DnsStore>((set, get) => ({
@@ -23,6 +25,11 @@ export const useDnsStore = create<DnsStore>((set, get) => ({
   stats: EMPTY_DNS_STATS,
   apply: ({ transactions, stats }) => {
     for (const t of transactions) dnsBuffer.byId.set(t.id, t);
+    // Maps iterate in insertion order, so the first keys are the oldest transactions.
+    for (const id of dnsBuffer.byId.keys()) {
+      if (dnsBuffer.byId.size <= MAX_TRANSACTIONS) break;
+      dnsBuffer.byId.delete(id);
+    }
     if (stats) set({ stats });
     if (timer) return;
     timer = setTimeout(() => {

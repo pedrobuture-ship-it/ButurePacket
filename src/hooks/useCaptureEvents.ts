@@ -4,6 +4,7 @@ import { useCaptureStore } from "@/stores/capture";
 import { formatCount } from "@/lib/format";
 import { useNoticeStore } from "@/stores/notices";
 import { useStorageStore } from "@/stores/storage";
+import { resetViews } from "@/lib/captureActions";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useDnsStore } from "@/stores/dns";
 import { useEventsStore } from "@/stores/events";
@@ -26,6 +27,7 @@ export function useCaptureEvents() {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
       on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://notice", (n) => useNoticeStore.getState().push(n.tone, n.text)),
       on("capture://storage", (s) => {
         const notify = useNoticeStore.getState().push;
         const prev = useStorageStore.getState().status;
@@ -37,6 +39,11 @@ export function useCaptureEvents() {
       on("capture://progress", (p) => {
         const notify = useNoticeStore.getState().push;
         if (!p.done) {
+          if (store.openProgress === null && useCaptureStore.getState().openProgress === null) {
+            // First event of a new file: start from a clean slate in offline mode.
+            resetViews();
+            store.setMode("offline", p.fileName);
+          }
           store.setState("processing");
           store.setOpenProgress(p);
           return;

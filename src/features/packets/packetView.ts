@@ -9,15 +9,15 @@ import type { PacketSummary } from "@/types/ipc";
  * incrementally as new packets arrive, so a live filter costs O(new packets), not O(all).
  */
 const subject = new PacketSubject((id) => flowBuffer.byId.get(id));
-let cache: { ast: Node | null; processed: number; indices: number[] } = { ast: null, processed: 0, indices: [] };
+let cache: { ast: Node | null; processed: number; indices: number[]; generation: number } = { ast: null, processed: 0, indices: [], generation: 0 };
 
 /** Matching row positions for `ast`, or `null` when there is no filter (every row matches). */
 export function filteredIndices(ast: Node | null, rowCount: number): number[] | null {
   if (ast === null) {
-    cache = { ast: null, processed: 0, indices: [] };
+    cache = { ast: null, processed: 0, indices: [], generation: packetBuffer.generation };
     return null;
   }
-  if (cache.ast !== ast || rowCount < cache.processed) cache = { ast, processed: 0, indices: [] };
+  if (cache.ast !== ast || rowCount < cache.processed || cache.generation !== packetBuffer.generation) cache = { ast, processed: 0, indices: [], generation: packetBuffer.generation };
   const rows = packetBuffer.rows;
   for (let i = cache.processed; i < rowCount; i++) {
     subject.item = rows[i];
@@ -29,7 +29,7 @@ export function filteredIndices(ast: Node | null, rowCount: number): number[] | 
 
 /** Forget cached matches (e.g. flows learned a domain, or the buffer was replaced). */
 export function invalidatePacketView() {
-  cache = { ast: null, processed: 0, indices: [] };
+  cache = { ast: null, processed: 0, indices: [], generation: packetBuffer.generation };
 }
 
 export interface PacketView {

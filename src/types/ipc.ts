@@ -312,3 +312,31 @@ export interface PacketPage {
   packets: PacketSummary[];
   total: number;
 }
+
+export type PermissionState = "available" | "limited" | "unavailable";
+
+export interface InterfaceProbe {
+  name: string;
+  description: string | null;
+  openable: boolean;
+  error: string | null;
+}
+
+export interface PermissionReport {
+  state: PermissionState;
+  platform: string;
+  runningAsRoot: boolean;
+  hasNetRaw: boolean | null;
+  hasNetAdmin: boolean | null;
+  interfaces: InterfaceProbe[];
+  executable: string | null;
+  summary: string;
+  guidance: string[];
+  /** Commands the user may run themselves; the app never runs them. */
+  commands: string[];
+}
+
+export interface NoticePayload {
+  tone: "info" | "success" | "warning" | "error";
+  text: string;
+}

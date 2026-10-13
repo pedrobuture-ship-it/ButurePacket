@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { sanitizeText } from "@/lib/sanitize";
 
 export type NoticeTone = "info" | "success" | "warning" | "error";
 
@@ -19,7 +20,9 @@ const MAX_VISIBLE = 4;
 
 export const useNoticeStore = create<NoticeStore>((set, get) => ({
   notices: [],
-  push: (tone, text) => {
+  push: (tone, rawText) => {
+    // Messages can embed file names or interface descriptions, which are untrusted.
+    const text = sanitizeText(rawText);
     const id = nextId++;
     set((s) => ({ notices: [...s.notices.filter((n) => n.text !== text), { id, tone, text }].slice(-MAX_VISIBLE) }));
     // Errors stay until dismissed; everything else fades.

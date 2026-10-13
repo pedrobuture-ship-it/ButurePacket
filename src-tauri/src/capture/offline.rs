@@ -1,6 +1,8 @@
 //! Streams a capture file through a sink in batches, with progress and cancellation.
 //! The file is never held in memory: packets are read, batched and handed on.
 
+#[cfg(test)]
+use crate::util::LockRecover;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -160,10 +162,10 @@ mod tests {
 
     impl OfflineSink for Collect {
         fn progress(&self, p: &Progress) {
-            self.progress.lock().unwrap().push(p.clone());
+            self.progress.lock_recover().push(p.clone());
         }
         fn batch(&self, packets: Vec<RawPacket>) {
-            self.batches.lock().unwrap().push(packets);
+            self.batches.lock_recover().push(packets);
             if let Some(c) = self.cancel_after_first_batch {
                 c.store(true, Ordering::Relaxed);
             }
@@ -201,14 +203,14 @@ mod tests {
             (out.packets, out.cancelled, out.truncated_tail),
             (4_500, false, false)
         );
-        let batches = sink.batches.lock().unwrap();
+        let batches = sink.batches.lock_recover();
         assert_eq!(
             batches.iter().map(Vec::len).collect::<Vec<_>>(),
             vec![2_000, 2_000, 500]
         );
         let ids: Vec<u64> = batches.iter().flatten().map(|p| p.id).collect();
         assert_eq!(ids, (1..=4_500).collect::<Vec<_>>());
-        let progress = sink.progress.lock().unwrap();
+        let progress = sink.progress.lock_recover();
         assert_eq!(progress[0].phase, Phase::Counting);
         assert_eq!(progress[1].total, 4_500);
         let last = progress.last().unwrap();
@@ -255,7 +257,7 @@ mod tests {
             run(&junk, &no, &sink),
             Err(CaptureError::InvalidFile(_))
         ));
-        assert!(sink.batches.lock().unwrap().is_empty());
+        assert!(sink.batches.lock_recover().is_empty());
     }
 
     #[test]
