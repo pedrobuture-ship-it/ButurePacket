@@ -24,6 +24,7 @@ pub fn run() {
             commands::capture::get_packet_detail,
             commands::capture::get_flows,
             commands::capture::get_dns,
+            commands::capture::get_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");

@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { Badge, EmptyState, Sparkline, Tabs } from "@/components/ui";
 import { formatBytes, formatCount, formatLatency, formatSpan, formatTimestamp } from "@/lib/format";
+import { eventBuffer, useEventsStore } from "@/stores/events";
+import { formatClock } from "@/features/timeline/model";
+import { useTimelineStore } from "@/stores/timeline";
 import { packetBuffer } from "@/stores/packets";
 import { usePacketsStore } from "@/stores/packets";
 import { useUiStore } from "@/stores/ui";
@@ -57,6 +60,39 @@ function Diagram({ flow }: { flow: FlowView }) {
         </span>
       </div>
       <Endpoint role="SERVER" flow={flow} side="b" />
+    </div>
+  );
+}
+
+function FlowTimeline({ flow }: { flow: FlowView }) {
+  const version = useEventsStore((s) => s.version);
+  const setFlow = useTimelineStore((s) => s.setFlow);
+  const setView = useUiStore((s) => s.setView);
+  const events = useMemo(() => eventBuffer.rows.filter((e) => e.flowId === flow.id).sort((a, b) => a.ts - b.ts), [flow.id, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (events.length === 0) return <EmptyState title="No events" description="No timeline events were recorded for this flow." />;
+  return (
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        className="self-start rounded border border-line-strong bg-raised px-2.5 py-1 text-xs hover:bg-hover"
+        onClick={() => {
+          setFlow(flow.id);
+          setView("timeline");
+        }}
+      >
+        Show in Timeline
+      </button>
+      <ol className="selectable flex flex-col gap-1 font-mono text-[11px]">
+        {events.slice(0, 200).map((e) => (
+          <li key={e.id} className="flex gap-2">
+            <span className="w-[88px] shrink-0 text-muted">{formatClock(e.ts, true)}</span>
+            <span>
+              {e.title}
+              {e.detail && <span className="text-muted"> · {e.detail}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -179,7 +215,7 @@ export function FlowInspector({ flow }: { flow: FlowView }) {
             />
           </div>
         )}
-        {tab === "timeline" && <EmptyState title="Timeline" description="Per-flow events are shown here once the event timeline is available." />}
+        {tab === "timeline" && <FlowTimeline flow={flow} />}
         {tab === "packets" && <PacketsTab flow={flow} />}
         {tab === "dns" &&
           (flow.domains.length ? (

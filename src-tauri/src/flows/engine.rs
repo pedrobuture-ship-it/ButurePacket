@@ -95,6 +95,17 @@ fn guess_app(f: &Flow) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Result of folding one packet into the engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Observed {
+    pub id: u64,
+    /// The packet opened a new flow.
+    pub is_new: bool,
+    pub state_before: Option<TcpState>,
+    pub retransmissions_before: u64,
+    pub resets_before: u64,
+}
+
 /// Tracks every conversation seen so far. `observe` is O(1) per packet.
 #[derive(Debug)]
 pub struct FlowEngine {
@@ -126,10 +137,17 @@ impl FlowEngine {
 
     /// Folds one packet in; returns the id of the flow it belongs to.
     pub fn observe(&mut self, input: &FlowInput) -> u64 {
+        self.observe_detailed(input).id
+    }
+
+    /// Like `observe`, but also reports what the packet changed (used for timeline events).
+    pub fn observe_detailed(&mut self, input: &FlowInput) -> Observed {
         let key = FlowKey::new(input.proto, input.src, input.dst);
+        let mut is_new = false;
         let id = match self.index.get(&key) {
             Some(&id) => id,
             None => {
+                is_new = true;
                 if self.flows.len() >= self.max_flows {
                     self.evict_idle();
                 }
@@ -140,11 +158,21 @@ impl FlowEngine {
                 id
             }
         };
+        let mut observed = Observed {
+            id,
+            is_new,
+            state_before: None,
+            retransmissions_before: 0,
+            resets_before: 0,
+        };
         if let Some(flow) = self.flows.get_mut(&id) {
+            observed.state_before = flow.tcp_state;
+            observed.retransmissions_before = flow.retransmissions;
+            observed.resets_before = flow.resets;
             flow.update(input);
         }
         self.dirty.insert(id);
-        id
+        observed
     }
 
     /// Drops the least recently seen 1% (at least one) of flows to stay within the limit.

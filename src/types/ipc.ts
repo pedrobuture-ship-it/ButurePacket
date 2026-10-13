@@ -174,3 +174,28 @@ export interface TlsInfo {
   serverHelloAt: number | null;
   handshakeEncrypted: boolean;
 }
+
+export type EventKind =
+  | "dnsQuery"
+  | "dnsResponse"
+  | "dnsFailure"
+  | "tcpConnect"
+  | "tlsHandshake"
+  | "flowStarted"
+  | "flowEnded"
+  | "retransmission"
+  | "reset"
+  | "latencySpike"
+  | "trafficBurst";
+
+export interface TimelineEvent {
+  id: number;
+  /** Microseconds since the Unix epoch (capture clock). */
+  ts: number;
+  kind: EventKind;
+  flowId: number | null;
+  host: string | null;
+  domain: string | null;
+  title: string;
+  detail: string | null;
+}

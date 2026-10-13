@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::error::IpcError;
 use crate::analytics::dns::{DnsStats, DnsTransactionView};
+use crate::analytics::events::TimelineEvent;
 use crate::capture::{
     CaptureError, CaptureSession, CaptureSink, InterfaceInfo, LiveSource, RawPacket, SessionConfig,
     SessionState, StatsSnapshot, list_interfaces,
@@ -47,6 +48,9 @@ impl CaptureSink for TauriSink {
         let _ = self.app.emit("capture://packets", out.packets);
         if !out.flows.is_empty() {
             let _ = self.app.emit("capture://flows", out.flows);
+        }
+        if !out.events.is_empty() {
+            let _ = self.app.emit("capture://events", out.events);
         }
         if !out.dns.is_empty() || out.dns_stats.is_some() {
             let _ = self.app.emit(
@@ -187,4 +191,9 @@ pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
         transactions: dns.snapshot(),
         stats: dns.stats(),
     }
+}
+
+#[tauri::command]
+pub fn get_events(state: State<'_, CaptureState>) -> Vec<TimelineEvent> {
+    state.pipeline.events.lock().unwrap().snapshot()
 }

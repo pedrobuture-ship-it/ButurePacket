@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use crate::analytics::dns::{DnsStats, DnsTracker, DnsTransactionView};
+use crate::analytics::events::{EventEngine, TimelineEvent};
 use crate::analytics::tls::TlsTracker;
 use crate::capture::RawPacket;
 use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, Proto};
@@ -16,7 +17,11 @@ pub struct Processed {
     pub flows: Vec<FlowView>,
     pub dns: Vec<DnsTransactionView>,
     pub dns_stats: Option<DnsStats>,
+    pub events: Vec<TimelineEvent>,
 }
+
+/// Upper bound on events pushed to the UI per batch (the full history stays in memory).
+const MAX_EVENTS_PER_BATCH: usize = 5_000;
 
 #[derive(Default)]
 pub struct Pipeline {
@@ -24,6 +29,7 @@ pub struct Pipeline {
     pub flows: Mutex<FlowEngine>,
     pub dns: Mutex<DnsTracker>,
     pub tls: Mutex<TlsTracker>,
+    pub events: Mutex<EventEngine>,
 }
 
 impl Pipeline {
@@ -32,11 +38,14 @@ impl Pipeline {
         let mut flows = self.flows.lock().unwrap();
         let mut dns = self.dns.lock().unwrap();
         let mut tls = self.tls.lock().unwrap();
+        let mut events = self.events.lock().unwrap();
         for raw in &batch {
             let d = dissect(&raw.data);
             let mut summary = summarize_dissection(raw, &d);
             if let Some(input) = FlowInput::from_dissection(raw, &d) {
-                let id = flows.observe(&input);
+                let obs = flows.observe_detailed(&input);
+                let id = obs.id;
+                events.bytes(input.ts_micros, u64::from(input.wire_len));
                 summary.flow_id = Some(id);
                 if let Some(msg) = &d.dns {
                     dns.observe(
@@ -49,6 +58,9 @@ impl Pipeline {
                         msg,
                     );
                 }
+                if let Some(f) = flows.get(id) {
+                    events.flow_packet(input.ts_micros, &obs, f);
+                }
                 if let Some(t) = input.tcp
                     && t.payload_len > 0
                     && let Some(payload) = raw
@@ -59,6 +71,9 @@ impl Pipeline {
                         .get(id)
                         .is_none_or(|f| f.direction_of(&input.src) == Direction::AtoB);
                     if let Some(info) = tls.observe(id, a_to_b, input.ts_micros, t.seq, payload) {
+                        if let Some(f) = flows.get(id) {
+                            events.tls_update(input.ts_micros, f, &info);
+                        }
                         flows.set_tls(id, info);
                     }
                 }
@@ -71,7 +86,10 @@ impl Pipeline {
         let changed = flows.take_changed();
         let dns_changed = dns.take_changed();
         let dns_stats = dns.take_stats_if_changed();
-        drop((flows, dns, tls));
+        events.dns_changed(&dns_changed);
+        let mut new_events = events.take_new();
+        new_events.truncate(MAX_EVENTS_PER_BATCH);
+        drop((flows, dns, tls, events));
         let mut store = self.store.lock().unwrap();
         for raw in batch {
             store.push(raw);
@@ -81,6 +99,7 @@ impl Pipeline {
             flows: changed,
             dns: dns_changed,
             dns_stats,
+            events: new_events,
         }
     }
 
@@ -89,6 +108,7 @@ impl Pipeline {
         self.flows.lock().unwrap().clear();
         self.dns.lock().unwrap().clear();
         self.tls.lock().unwrap().clear();
+        self.events.lock().unwrap().clear();
     }
 }
 
@@ -112,6 +132,7 @@ fn attach_likely_domains(flows: &mut FlowEngine, dns: &DnsTracker, id: u64, ts: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analytics::events::EventKind;
     use etherparse::PacketBuilder;
 
     fn frame(id: u64, sport: u16) -> RawPacket {
@@ -206,6 +227,14 @@ mod tests {
         let dns_flow = out.flows.iter().find(|f| f.protocol == "UDP").unwrap();
         assert!(dns_flow.domains.is_empty());
         assert_eq!(out.packets[1].application_protocol.as_deref(), Some("DNS"));
+        let kinds: Vec<_> = out.events.iter().map(|e| e.kind).collect();
+        for k in [
+            EventKind::DnsQuery,
+            EventKind::DnsResponse,
+            EventKind::FlowStarted,
+        ] {
+            assert!(kinds.contains(&k), "missing {k:?} in {kinds:?}");
+        }
     }
 
     #[test]
