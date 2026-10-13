@@ -1,0 +1,49 @@
+{
+  "name": "buturepacket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A modern network traffic explorer.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "rust:check": "cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings && cargo test",
+    "check": "npm run typecheck && npm run lint && npm test"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@tanstack/react-virtual": "^3.14.0",
+    "@tauri-apps/api": "^2.12.3",
+    "@tauri-apps/plugin-dialog": "^2.8.2",
+    "cytoscape": "^3.33.0",
+    "lucide-react": "^1.55.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.2",
+    "@types/cytoscape": "^3.21.9",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
