@@ -6,7 +6,7 @@ import { packetBuffer } from "@/stores/packets";
 import { usePacketsStore } from "@/stores/packets";
 import { useUiStore } from "@/stores/ui";
 import type { FlowView } from "@/types/ipc";
-import { endpointText, flowProblems, flowProtocolLabel } from "./flowText";
+import { UNAVAILABLE, endpointText, flowProblems, flowProtocolLabel, tlsSummary } from "./flowText";
 
 type Tab = "overview" | "timeline" | "packets" | "dns" | "transport" | "tls" | "problems";
 
@@ -104,6 +104,47 @@ function PacketsTab({ flow }: { flow: FlowView }) {
   );
 }
 
+function TlsTab({ flow }: { flow: FlowView }) {
+  const t = flow.tls;
+  if (!t) return <EmptyState title="TLS metadata unavailable" description="No TLS handshake was observed for this flow." />;
+  const cert = t.certificate;
+  const na = (v: string | null | undefined) => v ?? UNAVAILABLE;
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded border border-line bg-bg px-3 py-2.5 font-mono text-sm">
+        {tlsSummary(flow).map((line) => (
+          <div key={line} className={line.endsWith(UNAVAILABLE) ? "text-faint" : "text-fg"}>
+            {line}
+          </div>
+        ))}
+      </div>
+      <Rows
+        rows={[
+          ["Negotiated version", na(t.version)],
+          ["Cipher suite", na(t.cipherSuite)],
+          ["ALPN offered", t.alpnOffered.length ? t.alpnOffered.join(", ") : UNAVAILABLE],
+          ["ALPN selected", na(t.alpnSelected)],
+          ["Client Hello", t.clientHelloAt ? formatTimestamp(t.clientHelloAt) : UNAVAILABLE],
+          ["Server Hello", t.serverHelloAt ? formatTimestamp(t.serverHelloAt) : UNAVAILABLE],
+        ]}
+      />
+      {cert ? (
+        <Rows
+          rows={[
+            ["Certificate subject", na(cert.subjectCn)],
+            ["Issuer", na(cert.issuerCn)],
+            ["Valid from", na(cert.notBefore)],
+            ["Valid until", na(cert.notAfter)],
+            ["Alternative names", cert.dnsNames.length ? cert.dnsNames.join(", ") : UNAVAILABLE],
+          ]}
+        />
+      ) : (
+        <p className="text-xs text-muted">{t.handshakeEncrypted ? "Certificate: Unavailable — TLS 1.3 encrypts it." : "Certificate: Unavailable — not seen in the captured handshake."}</p>
+      )}
+    </div>
+  );
+}
+
 export function FlowInspector({ flow }: { flow: FlowView }) {
   const [tab, setTab] = useState<Tab>("overview");
   const problems = flowProblems(flow);
@@ -168,7 +209,7 @@ export function FlowInspector({ flow }: { flow: FlowView }) {
             ]}
           />
         )}
-        {tab === "tls" && <EmptyState title="TLS metadata unavailable" description="No TLS handshake was observed for this flow." />}
+        {tab === "tls" && <TlsTab flow={flow} />}
         {tab === "problems" &&
           (problems.length ? (
             <ul className="flex flex-col gap-2 text-xs">

@@ -25,6 +25,7 @@ export function makeFlow(over: Partial<FlowView> = {}): FlowView {
     latency: null,
     domains: [],
     process: null,
+    tls: null,
     sparkline: new Array(60).fill(0),
     ...over,
   };

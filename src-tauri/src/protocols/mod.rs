@@ -11,6 +11,7 @@ pub mod ipv4;
 pub mod ipv6;
 pub mod summary;
 pub mod tcp;
+pub mod tls;
 pub mod udp;
 
 pub use detail::{PacketDetail, build_detail};

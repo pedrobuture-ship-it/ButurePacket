@@ -3,6 +3,7 @@ use super::error::ParseError;
 use super::ethernet::{self, ETHERTYPE_ARP, ETHERTYPE_IPV4, ETHERTYPE_IPV6, Ethernet};
 use super::ipv4::{self, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP};
 use super::ipv6::{self, Ipv6, PROTO_ICMPV6};
+use super::tls::{self, TlsParse};
 use super::{arp, icmp, tcp, udp};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +38,8 @@ pub struct Dissection {
     pub fragmented: bool,
     /// Decoded DNS message when this is DNS over UDP/TCP port 53.
     pub dns: Option<Dns>,
+    /// TLS records found in this segment's own payload (no cross-segment reassembly).
+    pub tls: Option<TlsParse>,
     pub issues: Vec<ParseError>,
 }
 
@@ -157,6 +160,9 @@ fn dissect_transport(
             d.payload_offset = d.l4_offset + hdr;
             d.payload_len = data.len() - hdr;
             d.dns = decode_dns(&l4, &data[hdr..]);
+            if matches!(l4, L4::Tcp(_)) && tls::looks_like_tls(&data[hdr..]) {
+                d.tls = Some(tls::parse(&data[hdr..]));
+            }
             d.l4 = Some(l4);
         }
         Err(e) => d.issues.push(e),

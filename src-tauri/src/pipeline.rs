@@ -3,8 +3,9 @@
 use std::sync::Mutex;
 
 use crate::analytics::dns::{DnsStats, DnsTracker, DnsTransactionView};
+use crate::analytics::tls::TlsTracker;
 use crate::capture::RawPacket;
-use crate::flows::{FlowEngine, FlowInput, FlowView, Proto};
+use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, Proto};
 use crate::protocols::{PacketSummary, dissect, summary::summarize_dissection};
 use crate::storage::memory::PacketStore;
 
@@ -22,6 +23,7 @@ pub struct Pipeline {
     pub store: Mutex<PacketStore>,
     pub flows: Mutex<FlowEngine>,
     pub dns: Mutex<DnsTracker>,
+    pub tls: Mutex<TlsTracker>,
 }
 
 impl Pipeline {
@@ -29,6 +31,7 @@ impl Pipeline {
         let mut packets = Vec::with_capacity(batch.len());
         let mut flows = self.flows.lock().unwrap();
         let mut dns = self.dns.lock().unwrap();
+        let mut tls = self.tls.lock().unwrap();
         for raw in &batch {
             let d = dissect(&raw.data);
             let mut summary = summarize_dissection(raw, &d);
@@ -46,6 +49,19 @@ impl Pipeline {
                         msg,
                     );
                 }
+                if let Some(t) = input.tcp
+                    && t.payload_len > 0
+                    && let Some(payload) = raw
+                        .data
+                        .get(d.payload_offset..d.payload_offset + d.payload_len)
+                {
+                    let a_to_b = flows
+                        .get(id)
+                        .is_none_or(|f| f.direction_of(&input.src) == Direction::AtoB);
+                    if let Some(info) = tls.observe(id, a_to_b, input.ts_micros, t.seq, payload) {
+                        flows.set_tls(id, info);
+                    }
+                }
                 if input.proto != Proto::Icmp {
                     attach_likely_domains(&mut flows, &dns, id, input.ts_micros);
                 }
@@ -55,7 +71,7 @@ impl Pipeline {
         let changed = flows.take_changed();
         let dns_changed = dns.take_changed();
         let dns_stats = dns.take_stats_if_changed();
-        drop((flows, dns));
+        drop((flows, dns, tls));
         let mut store = self.store.lock().unwrap();
         for raw in batch {
             store.push(raw);
@@ -72,6 +88,7 @@ impl Pipeline {
         self.store.lock().unwrap().clear();
         self.flows.lock().unwrap().clear();
         self.dns.lock().unwrap().clear();
+        self.tls.lock().unwrap().clear();
     }
 }
 
@@ -189,6 +206,46 @@ mod tests {
         let dns_flow = out.flows.iter().find(|f| f.protocol == "UDP").unwrap();
         assert!(dns_flow.domains.is_empty());
         assert_eq!(out.packets[1].application_protocol.as_deref(), Some("DNS"));
+    }
+
+    #[test]
+    fn tls_handshake_populates_flow_metadata_and_packet_info() {
+        use crate::protocols::tls::tests::{client_hello, server_hello};
+        let p = Pipeline::default();
+        let seg = |id: u64, from_client: bool, seq: u32, payload: &[u8]| {
+            let (s, d, sp, dp) = if from_client {
+                ([10, 0, 0, 1], [140, 82, 121, 4], 40000, 443)
+            } else {
+                ([140, 82, 121, 4], [10, 0, 0, 1], 443, 40000)
+            };
+            let b = PacketBuilder::ethernet2([1; 6], [2; 6])
+                .ipv4(s, d, 64)
+                .tcp(sp, dp, seq, 1000)
+                .ack(1);
+            let mut data = vec![];
+            b.write(&mut data, payload).unwrap();
+            RawPacket {
+                id,
+                ts_micros: id as i64 * 10_000,
+                captured_len: data.len() as u32,
+                original_len: data.len() as u32,
+                data,
+            }
+        };
+        let out = p.process(vec![
+            seg(1, true, 1000, &client_hello("github.com", &["h2"])),
+            seg(2, false, 5000, &server_hello(true, 0x1301, None)),
+        ]);
+        assert_eq!(out.packets[0].info, "Client Hello (SNI: github.com)");
+        assert_eq!(out.packets[0].application_protocol.as_deref(), Some("TLS"));
+        assert_eq!(out.packets[1].info, "Server Hello");
+        let f = out.flows.iter().find(|f| f.protocol == "TCP").unwrap();
+        let tls = f.tls.as_ref().unwrap();
+        assert_eq!(
+            (tls.sni.as_deref(), tls.version.as_deref()),
+            (Some("github.com"), Some("TLS 1.3"))
+        );
+        assert_eq!(f.application_protocol.as_deref(), Some("TLS"));
     }
 
     #[test]

@@ -95,6 +95,8 @@ pub fn summarize_dissection(packet: &RawPacket, d: &Dissection) -> PacketSummary
     };
     let application = if d.dns.is_some() {
         Some("DNS".to_string())
+    } else if d.tls.is_some() {
+        Some("TLS".to_string())
     } else {
         match (&transport, sport, dport) {
             (Some(t), Some(s), Some(dst)) => guess_application(t, s, dst).map(str::to_string),
@@ -134,6 +136,7 @@ fn info_text(d: &Dissection) -> String {
     let tail = if d.fragmented { " [Fragment]" } else { "" };
     let base = match (&d.l3, &d.l4) {
         _ if d.dns.is_some() => d.dns.as_ref().map(|m| m.describe()).unwrap_or_default(),
+        _ if d.tls.is_some() => d.tls.as_ref().map(super::tls::describe).unwrap_or_default(),
         (Some(L3::Arp(a)), _) => a.describe(),
         (_, Some(L4::Tcp(t))) => {
             let mut s = format!(

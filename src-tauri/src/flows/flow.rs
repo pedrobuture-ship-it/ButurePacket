@@ -4,6 +4,7 @@ use serde::Serialize;
 
 use super::input::{FlowInput, TcpInfo};
 use super::key::{Endpoint, FlowKey, Proto};
+use crate::analytics::tls::TlsInfo;
 use crate::protocols::tcp::{ACK, FIN, RST, SYN};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -64,6 +65,8 @@ pub struct Flow {
     pub handshake_rtt_micros: Option<i64>,
     pub domains: Vec<String>,
     pub process: Option<String>,
+    /// TLS session metadata, when a handshake was observed.
+    pub tls: Option<TlsInfo>,
     syn_at: Option<i64>,
     dir_a: DirState,
     dir_b: DirState,
@@ -102,6 +105,7 @@ impl Flow {
             handshake_rtt_micros: None,
             domains: vec![],
             process: None,
+            tls: None,
             syn_at: None,
             dir_a: DirState::default(),
             dir_b: DirState::default(),

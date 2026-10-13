@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { endpointText, flowProblems, flowProtocolLabel } from "./flowText";
+import { endpointText, flowProblems, flowProtocolLabel, tlsSummary } from "./flowText";
 import { makeFlow } from "./testFlow";
 
 describe("flow text helpers", () => {
@@ -19,5 +19,13 @@ describe("flow text helpers", () => {
     expect(p).toHaveLength(5);
     expect(p[0]).toBe("3 TCP retransmissions observed");
     expect(flowProblems(makeFlow({ retransmissions: 1 }))[0]).toBe("1 TCP retransmission observed");
+  });
+
+  it("summarises TLS and never invents missing data", () => {
+    expect(tlsSummary(makeFlow())).toEqual([]);
+    const base = { version: "TLS 1.3", sni: "github.com", alpnOffered: ["h2", "http/1.1"], alpnSelected: null, cipherSuite: null, certificate: null, clientHelloAt: 1, serverHelloAt: 2, handshakeEncrypted: true };
+    expect(tlsSummary(makeFlow({ tls: { ...base, alpnSelected: "h2" } }))).toEqual(["TLS 1.3", "SNI: github.com", "ALPN: h2"]);
+    expect(tlsSummary(makeFlow({ tls: base }))[2]).toBe("ALPN: h2, http/1.1 (offered)");
+    expect(tlsSummary(makeFlow({ tls: { ...base, version: null, sni: null, alpnOffered: [] } }))).toEqual(["Unavailable", "SNI: Unavailable", "ALPN: Unavailable"]);
   });
 });

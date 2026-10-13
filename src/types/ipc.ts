@@ -99,6 +99,7 @@ export interface FlowView {
   latency: number | null;
   domains: string[];
   process: string | null;
+  tls: TlsInfo | null;
   /** Bytes per second for the last 60 seconds. */
   sparkline: number[];
 }
@@ -149,4 +150,27 @@ export interface DnsStats {
 export interface DnsPayload {
   transactions: DnsTransaction[];
   stats: DnsStats | null;
+}
+
+export interface CertMeta {
+  subjectCn: string | null;
+  subjectOrg: string | null;
+  issuerCn: string | null;
+  issuerOrg: string | null;
+  notBefore: string | null;
+  notAfter: string | null;
+  dnsNames: string[];
+}
+
+/** TLS metadata read from the handshake. A null field means it was not observable. */
+export interface TlsInfo {
+  version: string | null;
+  sni: string | null;
+  alpnOffered: string[];
+  alpnSelected: string | null;
+  cipherSuite: string | null;
+  certificate: CertMeta | null;
+  clientHelloAt: number | null;
+  serverHelloAt: number | null;
+  handshakeEncrypted: boolean;
 }

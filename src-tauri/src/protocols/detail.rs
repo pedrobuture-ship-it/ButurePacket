@@ -383,6 +383,9 @@ fn application_section(s: &PacketSummary, d: &Dissection) -> Section {
     if let Some(dns) = &d.dns {
         return dns_section(dns, d);
     }
+    if let Some(t) = &d.tls {
+        return tls_section(t, d);
+    }
     let mut b = SectionBuilder::virt("application", "Application Protocol");
     match &s.application_protocol {
         Some(app) => b.note("Likely protocol", format!("{app} (inferred from port)")),
@@ -434,6 +437,68 @@ fn dns_section(m: &super::dns::Dns, d: &Dissection) -> Section {
     }
     if m.incomplete {
         b.note("Warning", "Some answers could not be decoded");
+    }
+    b.section
+}
+
+fn tls_section(t: &super::tls::TlsParse, d: &Dissection) -> Section {
+    use super::tls::{cipher_suite_name, handshake_name, version_name};
+    let mut b = SectionBuilder::new(
+        "application",
+        "Transport Layer Security",
+        d.payload_offset,
+        d.payload_len,
+    );
+    b.field("Summary", super::tls::describe(t), 0, d.payload_len.min(5));
+    for &h in &t.handshake_types {
+        b.note("Handshake", handshake_name(h));
+    }
+    if let Some(h) = &t.client_hello {
+        b.note("SNI", h.sni.clone().unwrap_or_else(|| "Unavailable".into()));
+        b.note(
+            "ALPN offered",
+            if h.alpn.is_empty() {
+                "Unavailable".into()
+            } else {
+                h.alpn.join(", ")
+            },
+        );
+        if !h.supported_versions.is_empty() {
+            b.note(
+                "Versions offered",
+                h.supported_versions
+                    .iter()
+                    .map(|v| version_name(*v))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+        }
+        b.note("Cipher suites offered", h.cipher_suites.len().to_string());
+    }
+    if let Some(s) = &t.server_hello {
+        b.note(
+            "Negotiated version",
+            version_name(s.selected_version.unwrap_or(s.legacy_version)),
+        );
+        b.note("Cipher suite", cipher_suite_name(s.cipher_suite));
+        b.note(
+            "ALPN selected",
+            s.alpn.clone().unwrap_or_else(|| "Unavailable".into()),
+        );
+    }
+    if let Some(c) = &t.certificate {
+        b.note(
+            "Certificate subject",
+            c.subject_cn.clone().unwrap_or_else(|| "Unavailable".into()),
+        );
+        b.note(
+            "Certificate issuer",
+            c.issuer_cn.clone().unwrap_or_else(|| "Unavailable".into()),
+        );
+        b.note(
+            "Valid until",
+            c.not_after.clone().unwrap_or_else(|| "Unavailable".into()),
+        );
     }
     b.section
 }

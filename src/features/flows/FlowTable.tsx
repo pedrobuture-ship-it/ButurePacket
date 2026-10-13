@@ -62,7 +62,7 @@ export function FlowTable({ flows, selectedId, onSelect }: Props) {
                   <span className="px-2">
                     <Badge tone={protocolTone(flowProtocolLabel(f))}>{flowProtocolLabel(f)}</Badge>
                   </span>
-                  <span className="truncate px-2 text-muted">{f.domains[0] ?? "—"}</span>
+                  <span className="truncate px-2 text-muted">{f.tls?.sni ?? f.domains[0] ?? "—"}</span>
                   <span className="px-2">{formatSpan(f.duration)}</span>
                   <span className="px-2">{formatCount(f.totalPackets)}</span>
                   <span className="px-2">{formatBytes(f.bytesAToB)}</span>

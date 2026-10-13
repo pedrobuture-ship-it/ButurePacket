@@ -5,6 +5,7 @@ use serde::Serialize;
 use super::flow::{Flow, SPARK_WINDOW, TcpState};
 use super::input::FlowInput;
 use super::key::{Endpoint, FlowKey};
+use crate::analytics::tls::TlsInfo;
 
 pub const DEFAULT_MAX_FLOWS: usize = 500_000;
 
@@ -34,6 +35,7 @@ pub struct FlowView {
     pub latency: Option<i64>,
     pub domains: Vec<String>,
     pub process: Option<String>,
+    pub tls: Option<TlsInfo>,
     pub sparkline: Vec<u64>,
 }
 
@@ -62,6 +64,7 @@ impl FlowView {
             latency: f.handshake_rtt_micros,
             domains: f.domains.clone(),
             process: f.process.clone(),
+            tls: f.tls.clone(),
             sparkline: {
                 let s = f.sparkline();
                 debug_assert_eq!(s.len(), SPARK_WINDOW);
@@ -73,6 +76,9 @@ impl FlowView {
 
 fn guess_app(f: &Flow) -> Option<String> {
     use super::key::Proto::{Tcp, Udp};
+    if f.tls.is_some() {
+        return Some("TLS".to_string());
+    }
     let by_port = |p: u16| match (f.proto, p) {
         (Tcp | Udp, 53) => Some("DNS"),
         (Udp, 5353) => Some("MDNS"),
@@ -174,6 +180,14 @@ impl FlowEngine {
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut Flow> {
         self.flows.get_mut(&id)
+    }
+
+    /// Stores TLS metadata on a flow and marks it as changed.
+    pub fn set_tls(&mut self, id: u64, info: TlsInfo) {
+        if let Some(f) = self.flows.get_mut(&id) {
+            f.tls = Some(info);
+            self.dirty.insert(id);
+        }
     }
 
     /// Attaches likely domains to a flow (without duplicates) and marks it as changed.

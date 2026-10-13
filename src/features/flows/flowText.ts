@@ -19,3 +19,13 @@ export function flowProblems(f: FlowView): string[] {
   if (f.latency !== null && f.latency > 200_000) out.push("High handshake latency (over 200 ms)");
   return out;
 }
+
+export const UNAVAILABLE = "Unavailable";
+
+/** The headline TLS lines, e.g. ["TLS 1.3", "SNI: github.com", "ALPN: h2"]; missing data reads "Unavailable". */
+export function tlsSummary(f: FlowView): string[] {
+  const t = f.tls;
+  if (!t) return [];
+  const alpn = t.alpnSelected ?? (t.alpnOffered.length ? `${t.alpnOffered.join(", ")} (offered)` : UNAVAILABLE);
+  return [t.version ?? UNAVAILABLE, `SNI: ${t.sni ?? UNAVAILABLE}`, `ALPN: ${alpn}`];
+}
