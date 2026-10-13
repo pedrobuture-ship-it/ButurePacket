@@ -10,16 +10,21 @@ use serde::Serialize;
 use super::dns::DnsStats;
 use crate::flows::{Flow, Observed};
 
-const MAX_BUCKETS: usize = 3600;
+/// A day of one-second buckets (~7 MB), enough to chart long offline captures.
+const MAX_BUCKETS: usize = 86_400;
+/// Points drawn for the whole-capture chart.
+const WHOLE_SERIES_POINTS: usize = 300;
 /// Longest run of empty seconds filled in explicitly (so a capture gap doesn't allocate hours of zeros).
 const MAX_GAP_FILL: i64 = 120;
 const TOP_N: usize = 8;
 
-#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Bucket {
-    /// Unix second.
+    /// Unix second of the first second covered.
     pub sec: i64,
+    /// Seconds covered by this bucket (1 normally; more when a long capture is downsampled).
+    pub span: u32,
     pub packets: u64,
     pub bytes: u64,
     pub new_flows: u64,
@@ -29,6 +34,23 @@ pub struct Bucket {
     pub resets: u64,
     pub duplicate_acks: u64,
     pub zero_windows: u64,
+}
+
+impl Default for Bucket {
+    fn default() -> Self {
+        Self {
+            sec: 0,
+            span: 1,
+            packets: 0,
+            bytes: 0,
+            new_flows: 0,
+            active_flows: 0,
+            retransmissions: 0,
+            resets: 0,
+            duplicate_acks: 0,
+            zero_windows: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -181,15 +203,29 @@ impl MetricsEngine {
         v
     }
 
+    /// The whole history squeezed into at most `max_points` buckets (counts summed, flow gauge maxed).
+    pub fn series_whole(&self, max_points: usize) -> Vec<Bucket> {
+        let all = self.series(usize::MAX);
+        downsample(&all, max_points)
+    }
+
+    /// `whole`: chart the entire capture (offline files) instead of the latest few minutes (live).
     pub fn snapshot<'a>(
         &self,
         flows: impl Iterator<Item = &'a Flow>,
         dns: DnsStats,
         dns_failures: &[(String, u32)],
+        whole: bool,
     ) -> AnalyticsSnapshot {
         let rankings = rank(flows);
-        let series = self.series(300);
-        let problems = detect_problems(&self.tcp, &series, &dns, dns_failures, &rankings);
+        // Problem detection always looks at recent raw seconds, whatever is charted.
+        let recent = self.series(300);
+        let problems = detect_problems(&self.tcp, &recent, &dns, dns_failures, &rankings);
+        let series = if whole {
+            self.series_whole(WHOLE_SERIES_POINTS)
+        } else {
+            recent
+        };
         AnalyticsSnapshot {
             series,
             tcp: self.tcp.clone(),
@@ -198,6 +234,35 @@ impl MetricsEngine {
             problems,
         }
     }
+}
+
+fn downsample(all: &[Bucket], max_points: usize) -> Vec<Bucket> {
+    let max_points = max_points.max(1);
+    if all.len() <= max_points {
+        return all.to_vec();
+    }
+    let k = all.len().div_ceil(max_points);
+    all.chunks(k)
+        .map(|chunk| {
+            let mut b = Bucket {
+                sec: chunk[0].sec,
+                span: 0,
+                ..Default::default()
+            };
+            for c in chunk {
+                b.span += c.span;
+                b.packets += c.packets;
+                b.bytes += c.bytes;
+                b.new_flows += c.new_flows;
+                b.active_flows = b.active_flows.max(c.active_flows);
+                b.retransmissions += c.retransmissions;
+                b.resets += c.resets;
+                b.duplicate_acks += c.duplicate_acks;
+                b.zero_windows += c.zero_windows;
+            }
+            b
+        })
+        .collect()
 }
 
 fn top(map: HashMap<String, RankEntry>) -> Vec<RankEntry> {
@@ -483,12 +548,34 @@ mod tests {
         feed(&mut m, &mut e, tcp(SEC, 40000, ACK, 1000, 100));
         feed(&mut m, &mut e, tcp(SEC + 1, 40000, ACK, 1000, 100)); // retransmission
         feed(&mut m, &mut e, tcp(SEC + 2, 40000, RST, 1100, 0));
-        let snap = m.snapshot(e.snapshot_flows(), DnsStats::default(), &[]);
+        let snap = m.snapshot(e.snapshot_flows(), DnsStats::default(), &[], false);
         assert_eq!(
             (snap.tcp.packets, snap.tcp.retransmissions, snap.tcp.resets),
             (3, 1, 1)
         );
         assert_eq!(snap.series[0].retransmissions, 1);
+    }
+
+    #[test]
+    fn long_captures_are_downsampled_without_losing_counts() {
+        let (mut m, mut e) = (MetricsEngine::new(), FlowEngine::default());
+        for s in 0..1000 {
+            feed(&mut m, &mut e, udp(s * SEC, 1000 + (s % 3) as u16, 100));
+        }
+        let whole = m.series_whole(100);
+        assert!(whole.len() <= 100);
+        assert_eq!(whole.iter().map(|b| b.packets).sum::<u64>(), 1000);
+        assert_eq!(whole.iter().map(|b| u64::from(b.span)).sum::<u64>(), 1000);
+        assert_eq!(whole[0].sec, 0);
+        let snap = m.snapshot(e.snapshot_flows(), DnsStats::default(), &[], true);
+        assert!(snap.series.len() <= WHOLE_SERIES_POINTS);
+        assert_eq!(
+            m.snapshot(e.snapshot_flows(), DnsStats::default(), &[], false)
+                .series
+                .len(),
+            300
+        );
+        assert_eq!(m.series_whole(5000).len(), 1000); // small enough: untouched
     }
 
     #[test]

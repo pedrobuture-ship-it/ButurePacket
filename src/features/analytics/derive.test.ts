@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { barFractions, currentRate, latest, seriesValues, tcpHealth } from "./derive";
+import { barFractions, currentRate, latest, seriesValues, summarizeSeries, tcpHealth } from "./derive";
 import type { MetricBucket } from "@/types/ipc";
 
-const b = (sec: number, packets: number, over: Partial<MetricBucket> = {}): MetricBucket => ({ sec, packets, bytes: packets * 100, newFlows: 0, activeFlows: 0, retransmissions: 0, resets: 0, duplicateAcks: 0, zeroWindows: 0, ...over });
+const b = (sec: number, packets: number, over: Partial<MetricBucket> = {}): MetricBucket => ({ sec, span: 1, packets, bytes: packets * 100, newFlows: 0, activeFlows: 0, retransmissions: 0, resets: 0, duplicateAcks: 0, zeroWindows: 0, ...over });
 
 describe("analytics derivations", () => {
   it("pads short series on the left", () => {
@@ -29,5 +29,18 @@ describe("analytics derivations", () => {
     expect(barFractions([50, 100, 25])).toEqual([0.5, 1, 0.25]);
     expect(barFractions([0, 0])).toEqual([0, 0]);
     expect(barFractions([])).toEqual([]);
+  });
+
+  it("normalises downsampled buckets to per-second values", () => {
+    const s = [b(0, 1000, { span: 10 }), b(10, 3000, { span: 10 })];
+    expect(seriesValues(s, "packets", 2)).toEqual([100, 300]);
+    expect(currentRate([...s, b(20, 1, { span: 10 })], "packets", 2)).toBe(200);
+    expect(seriesValues([b(0, 1, { span: 10, activeFlows: 50 })], "activeFlows", 1)).toEqual([50]); // gauges are not divided
+  });
+  it("summarises a whole capture", () => {
+    const s = [b(0, 1000, { span: 10 }), b(10, 3000, { span: 10 })];
+    expect(summarizeSeries(s, "packets")).toEqual({ avg: 200, peak: 300 });
+    expect(summarizeSeries([], "bytes")).toEqual({ avg: 0, peak: 0 });
+    expect(summarizeSeries([b(0, 0, { activeFlows: 10 }), b(1, 0, { activeFlows: 30 })], "activeFlows")).toEqual({ avg: 20, peak: 30 });
   });
 });

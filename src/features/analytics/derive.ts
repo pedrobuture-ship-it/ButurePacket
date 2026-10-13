@@ -2,9 +2,14 @@ import type { MetricBucket, TcpTotals } from "@/types/ipc";
 
 export type SeriesKey = "packets" | "bytes" | "newFlows" | "activeFlows";
 
-/** Values of one metric for the newest `n` seconds, oldest first, padded with zeros on the left. */
+/** Per-second value of a bucket (counts are divided by the seconds it covers; gauges are not). */
+function perSecond(b: MetricBucket, key: SeriesKey): number {
+  return key === "activeFlows" ? b[key] : b[key] / Math.max(1, b.span);
+}
+
+/** Values of one metric for the newest `n` buckets, oldest first, padded with zeros on the left. */
 export function seriesValues(series: readonly MetricBucket[], key: SeriesKey, n = 60): number[] {
-  const tail = series.slice(-n).map((b) => b[key]);
+  const tail = series.slice(-n).map((b) => perSecond(b, key));
   return [...new Array<number>(Math.max(0, n - tail.length)).fill(0), ...tail];
 }
 
@@ -16,7 +21,15 @@ export function currentRate(series: readonly MetricBucket[], key: SeriesKey, win
   if (series.length === 0) return 0;
   const done = series.length > 1 ? series.slice(0, -1) : series;
   const recent = done.slice(-window);
-  return recent.reduce((sum, b) => sum + b[key], 0) / recent.length;
+  return recent.reduce((sum, b) => sum + perSecond(b, key), 0) / recent.length;
+}
+
+/** Whole-capture average and peak per-second rate, weighting buckets by the time they cover. */
+export function summarizeSeries(series: readonly MetricBucket[], key: SeriesKey): { avg: number; peak: number } {
+  if (series.length === 0) return { avg: 0, peak: 0 };
+  const seconds = series.reduce((s, b) => s + Math.max(1, b.span), 0);
+  const total = series.reduce((s, b) => s + (key === "activeFlows" ? b[key] * Math.max(1, b.span) : b[key]), 0);
+  return { avg: total / seconds, peak: Math.max(...series.map((b) => perSecond(b, key))) };
 }
 
 /** Latest value of a gauge-like metric (active flows). */

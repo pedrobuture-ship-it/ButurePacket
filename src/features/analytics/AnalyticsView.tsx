@@ -5,15 +5,20 @@ import { cn } from "@/lib/cn";
 import { formatBytes, formatCount, formatLatency, formatPercent, formatRate } from "@/lib/format";
 import { useAnalyticsStore } from "@/stores/analytics";
 import type { ProblemLabel, RankEntry } from "@/types/ipc";
-import { barFractions, currentRate, latest, seriesValues, tcpHealth } from "./derive";
+import { useCaptureStore } from "@/stores/capture";
+import { type SeriesKey, barFractions, currentRate, latest, seriesValues, summarizeSeries, tcpHealth } from "./derive";
+import { ModeBadge } from "@/components/ModeBadge";
 
-function Card({ label, value, values, tone = "text-primary" }: { label: string; value: ReactNode; values: number[]; tone?: string }) {
+function Card({ label, value, hint, values, tone = "text-primary" }: { label: string; value: ReactNode; hint?: string; values: number[]; tone?: string }) {
   return (
     <div className="flex flex-col gap-1 rounded border border-line bg-surface px-4 py-3">
       <span className="text-[11px] text-muted">{label}</span>
       <div className="flex items-end justify-between gap-3">
-        <span className="whitespace-nowrap font-mono text-2xl leading-none text-fg">{value}</span>
-        <Sparkline values={values} width={110} height={36} className={tone} label={`${label} over the last minute`} />
+        <div className="flex flex-col gap-1">
+          <span className="whitespace-nowrap font-mono text-2xl leading-none text-fg">{value}</span>
+          {hint && <span className="font-mono text-[10px] text-faint">{hint}</span>}
+        </div>
+        <Sparkline values={values} width={120} height={36} className={tone} label={`${label} over the last minute`} />
       </div>
     </div>
   );
@@ -63,14 +68,28 @@ const LABELS: Record<ProblemLabel, { text: string; tone: BadgeTone }> = {
 export function AnalyticsView() {
   const { series, tcp, dns, rankings, problems } = useAnalyticsStore((s) => s.snapshot);
   const health = tcpHealth(tcp);
+  const offline = useCaptureStore((s) => s.mode === "offline");
+  // Live: the current rate. Offline: the whole file's average, with the peak as context.
+  const rate = (key: SeriesKey, format: (n: number) => string) => {
+    if (!offline) return { value: format(currentRate(series, key)), hint: undefined };
+    const { avg, peak } = summarizeSeries(series, key);
+    return { value: format(avg), hint: `avg · peak ${format(peak)}` };
+  };
+  const pps = rate("packets", formatRate);
+  const thr = rate("bytes", (n) => `${(n / 1048576).toFixed(1)} MB/s`);
+  const nf = rate("newFlows", (n) => n.toFixed(1));
   return (
     <div className="h-full overflow-auto p-4">
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <ModeBadge />
+          {offline && <span className="text-xs text-muted">Charts cover the whole file.</span>}
+        </div>
         <section aria-label="Traffic" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <Card label="Packets / sec" value={formatRate(currentRate(series, "packets"))} values={seriesValues(series, "packets")} />
-          <Card label="Throughput" value={`${(currentRate(series, "bytes") / 1048576).toFixed(1)} MB/s`} values={seriesValues(series, "bytes")} tone="text-info" />
-          <Card label="Active Flows" value={formatCount(latest(series, "activeFlows"))} values={seriesValues(series, "activeFlows")} />
-          <Card label="New Flows / sec" value={currentRate(series, "newFlows").toFixed(1)} values={seriesValues(series, "newFlows")} tone="text-info" />
+          <Card label="Packets / sec" value={pps.value} hint={pps.hint} values={seriesValues(series, "packets", 300)} />
+          <Card label="Throughput" value={thr.value} hint={thr.hint} values={seriesValues(series, "bytes", 300)} tone="text-info" />
+          <Card label="Active Flows" value={offline ? formatCount(summarizeSeries(series, "activeFlows").peak) : formatCount(latest(series, "activeFlows"))} hint={offline ? "peak" : undefined} values={seriesValues(series, "activeFlows", 300)} />
+          <Card label="New Flows / sec" value={nf.value} hint={nf.hint} values={seriesValues(series, "newFlows", 300)} tone="text-info" />
         </section>
 
         <div className="grid gap-4 lg:grid-cols-2">

@@ -116,11 +116,16 @@ impl Pipeline {
     }
 
     /// Rolling metrics, rankings and potential problems for the Analytics screen.
-    pub fn analytics(&self) -> AnalyticsSnapshot {
+    pub fn analytics(&self, whole: bool) -> AnalyticsSnapshot {
         let flows = self.flows.lock().unwrap();
         let dns = self.dns.lock().unwrap();
         let metrics = self.metrics.lock().unwrap();
-        metrics.snapshot(flows.snapshot_flows(), dns.stats(), &dns.failed_domains())
+        metrics.snapshot(
+            flows.snapshot_flows(),
+            dns.stats(),
+            &dns.failed_domains(),
+            whole,
+        )
     }
 
     pub fn clear(&self) {
@@ -455,7 +460,7 @@ mod tests {
         ] {
             assert!(kinds.contains(&k), "missing {k:?}");
         }
-        let snap = p.analytics();
+        let snap = p.analytics(false);
         assert_eq!(snap.tcp.packets, 6);
         assert_eq!(snap.dns.queries, 1);
         assert!(snap.rankings.protocols.iter().any(|r| r.key == "TLS"));

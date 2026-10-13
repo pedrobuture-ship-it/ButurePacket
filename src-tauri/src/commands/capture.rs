@@ -25,6 +25,8 @@ pub struct CaptureState {
     /// A capture file is currently being opened.
     pub offline_running: Arc<AtomicBool>,
     pub offline_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    /// The data on screen came from a capture file (charts cover the whole file).
+    pub offline_mode: AtomicBool,
 }
 
 impl CaptureState {
@@ -100,7 +102,7 @@ impl CaptureSink for TauriSink {
             *last = Instant::now();
             let _ = self
                 .app
-                .emit("capture://analytics", self.pipeline.analytics());
+                .emit("capture://analytics", self.pipeline.analytics(false));
         }
     }
 
@@ -137,6 +139,9 @@ pub fn capture_start(
     }
     let source = LiveSource::open(&interface)?;
     state.pipeline.clear();
+    state
+        .offline_mode
+        .store(false, std::sync::atomic::Ordering::SeqCst);
     let sink = TauriSink {
         app,
         pipeline: state.pipeline.clone(),
@@ -195,6 +200,9 @@ pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u
 #[tauri::command]
 pub fn clear_capture(state: State<'_, CaptureState>) {
     state.pipeline.clear();
+    state
+        .offline_mode
+        .store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Layered, byte-mapped decode of one packet for the inspector.
@@ -240,5 +248,7 @@ pub fn get_events(state: State<'_, CaptureState>) -> Vec<TimelineEvent> {
 pub fn get_analytics(
     state: State<'_, CaptureState>,
 ) -> crate::analytics::metrics::AnalyticsSnapshot {
-    state.pipeline.analytics()
+    state
+        .pipeline
+        .analytics(state.offline_mode.load(std::sync::atomic::Ordering::SeqCst))
 }

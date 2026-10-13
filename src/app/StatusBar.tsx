@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Filter } from "lucide-react";
+import { ModeBadge } from "@/components/ModeBadge";
 import { StatusIndicator, type Status } from "@/components/ui";
 import { useCaptureStore } from "@/stores/capture";
 import { useUiStore } from "@/stores/ui";
@@ -29,11 +30,11 @@ function useClock() {
 }
 
 export function StatusBar() {
-  const { state, mode, selectedInterface, stats, error } = useCaptureStore();
+  const { state, mode, selectedInterface, stats, error, fileName } = useCaptureStore();
   const filter = useUiStore((s) => s.filter);
   const now = useClock();
   const s = statusOf[state];
-  const where = mode === "live" ? `on ${selectedInterface ?? "—"}` : "(offline)";
+  const where = mode === "live" ? `on ${selectedInterface ?? "—"}` : `· ${fileName ?? "file"}`;
   return (
     <footer className="flex h-7 shrink-0 items-center gap-5 border-t border-line bg-surface px-4 font-mono text-[11px] text-muted">
       <StatusIndicator status={s.status} label={`${s.label} ${where}`} />
@@ -46,10 +47,7 @@ export function StatusBar() {
       <span>Parser Load: {formatPercent(stats.parserLoad)}</span>
       {error && <span className="truncate text-danger">{error}</span>}
       <div className="flex-1" />
-      <span className="flex items-center gap-1.5 text-primary">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-        {mode === "live" ? "LIVE" : "OFFLINE"}
-      </span>
+      <ModeBadge />
       <span className="flex items-center gap-1.5">
         <Filter size={11} />
         {filter || "No Filters"}

@@ -205,8 +205,10 @@ export interface TimelineEvent {
 }
 
 export interface MetricBucket {
-  /** Unix second. */
+  /** Unix second of the first second covered. */
   sec: number;
+  /** Seconds covered (1, or more when a long capture is downsampled). */
+  span: number;
   packets: number;
   bytes: number;
   newFlows: number;

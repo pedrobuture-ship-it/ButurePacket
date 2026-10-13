@@ -47,7 +47,7 @@ struct FileSink {
     bytes: AtomicU64,
     first_ts: Mutex<Option<i64>>,
     last_ts: AtomicU64,
-    started: Instant,
+    last_analytics: Mutex<Instant>,
 }
 
 impl FileSink {
@@ -108,7 +108,13 @@ impl OfflineSink for FileSink {
                 ..Default::default()
             },
         );
-        let _ = self.started; // processing wall time is not shown; capture time span is
+        let mut last = self.last_analytics.lock().unwrap();
+        if last.elapsed() >= std::time::Duration::from_secs(1) {
+            *last = Instant::now();
+            let _ = self
+                .app
+                .emit("capture://analytics", self.pipeline.analytics(true));
+        }
     }
 }
 
@@ -137,6 +143,7 @@ pub fn open_capture(
         .unwrap_or_default();
 
     state.pipeline.clear();
+    state.offline_mode.store(true, Ordering::SeqCst);
     let cancel = Arc::new(AtomicBool::new(false));
     *state.offline_cancel.lock().unwrap() = Some(cancel.clone());
     state.offline_running.store(true, Ordering::SeqCst);
@@ -155,10 +162,10 @@ pub fn open_capture(
                 bytes: AtomicU64::new(0),
                 first_ts: Mutex::new(None),
                 last_ts: AtomicU64::new(0),
-                started: Instant::now(),
+                last_analytics: Mutex::new(Instant::now()),
             };
             let result = offline::run(&validated, &cancel, &sink);
-            let _ = app.emit("capture://analytics", pipeline.analytics());
+            let _ = app.emit("capture://analytics", pipeline.analytics(true));
             let mut done = sink.payload(None);
             done.done = true;
             match result {
