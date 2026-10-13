@@ -18,8 +18,25 @@ export interface StatePayload {
   error: IpcError | null;
 }
 
-export interface BatchPayload {
-  count: number;
-  firstId: number;
-  lastId: number;
+/** One decoded packet row. The payload is never included; fetch bytes on demand. */
+export interface PacketSummary {
+  id: number;
+  /** Microseconds since the Unix epoch. */
+  timestamp: number;
+  capturedLength: number;
+  originalLength: number;
+  sourceMac: string | null;
+  destinationMac: string | null;
+  sourceIp: string | null;
+  destinationIp: string | null;
+  sourcePort: number | null;
+  destinationPort: number | null;
+  networkProtocol: string;
+  transportProtocol: string | null;
+  applicationProtocol: string | null;
+  tcpFlags: string[] | null;
+  ttl: number | null;
+  payloadLength: number;
+  info: string;
+  issues: string[];
 }

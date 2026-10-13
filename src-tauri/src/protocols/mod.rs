@@ -1,1 +1,16 @@
-//! protocols domain.
+//! Hand-written, bounds-checked protocol parsers. None of them may panic on hostile input.
+
+pub mod arp;
+pub mod dissect;
+pub mod error;
+pub mod ethernet;
+pub mod icmp;
+pub mod ipv4;
+pub mod ipv6;
+pub mod summary;
+pub mod tcp;
+pub mod udp;
+
+pub use dissect::{Dissection, L3, L4, dissect};
+pub use error::ParseError;
+pub use summary::{PacketSummary, summarize};

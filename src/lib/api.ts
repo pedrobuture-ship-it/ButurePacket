@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AppInfo, BatchPayload, IpcError, StatePayload } from "@/types/ipc";
+import type { AppInfo, IpcError, PacketSummary, StatePayload } from "@/types/ipc";
 import type { CaptureStats, InterfaceInfo } from "@/types/capture";
 
 /** Every backend command is declared here: name → [args, result]. */
@@ -11,13 +11,15 @@ interface Commands {
   capture_pause: [Record<string, never>, void];
   capture_resume: [Record<string, never>, void];
   capture_stop: [Record<string, never>, void];
+  get_packet_bytes: [{ id: number }, number[]];
+  clear_capture: [Record<string, never>, void];
 }
 
 /** Backend → frontend events: name → payload. */
 interface Events {
   "capture://stats": CaptureStats;
   "capture://state": StatePayload;
-  "capture://batch": BatchPayload;
+  "capture://packets": PacketSummary[];
 }
 
 export function isIpcError(e: unknown): e is IpcError {
@@ -46,4 +48,6 @@ export const api = {
   capturePause: () => call("capture_pause", {}),
   captureResume: () => call("capture_resume", {}),
   captureStop: () => call("capture_stop", {}),
+  getPacketBytes: (id: number) => call("get_packet_bytes", { id }),
+  clearCapture: () => call("clear_capture", {}),
 };

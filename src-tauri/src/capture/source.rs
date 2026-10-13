@@ -30,6 +30,12 @@ impl LiveSource {
             .immediate_mode(true)
             .buffer_size(KERNEL_BUFFER_BYTES)
             .open()?;
+        if cap.get_datalink() != pcap::Linktype::ETHERNET {
+            return Err(CaptureError::Backend(format!(
+                "Unsupported link type {:?}: only Ethernet interfaces can be analysed.",
+                cap.get_datalink()
+            )));
+        }
         Ok(Self { cap })
     }
 }

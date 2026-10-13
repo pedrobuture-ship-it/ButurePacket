@@ -18,6 +18,8 @@ pub fn run() {
             commands::capture::capture_pause,
             commands::capture::capture_resume,
             commands::capture::capture_stop,
+            commands::capture::get_packet_bytes,
+            commands::capture::clear_capture,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ButurePacket");
