@@ -8,7 +8,7 @@ use crate::capture::{
     CaptureError, CaptureSession, CaptureSink, InterfaceInfo, LiveSource, RawPacket, SessionConfig,
     SessionState, StatsSnapshot, list_interfaces,
 };
-use crate::protocols::{PacketSummary, summarize};
+use crate::protocols::{PacketDetail, PacketSummary, build_detail, summarize};
 use crate::storage::memory::PacketStore;
 
 #[derive(Default)]
@@ -138,4 +138,17 @@ pub fn get_packet_bytes(state: State<'_, CaptureState>, id: u64) -> Result<Vec<u
 #[tauri::command]
 pub fn clear_capture(state: State<'_, CaptureState>) {
     state.store.lock().unwrap().clear();
+}
+
+/// Layered, byte-mapped decode of one packet for the inspector.
+#[tauri::command]
+pub fn get_packet_detail(
+    state: State<'_, CaptureState>,
+    id: u64,
+) -> Result<PacketDetail, IpcError> {
+    let store = state.store.lock().unwrap();
+    store.get(id).map(build_detail).ok_or_else(|| IpcError {
+        kind: "packetNotFound".into(),
+        message: format!("Packet #{id} is no longer available."),
+    })
 }

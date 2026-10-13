@@ -1,6 +1,7 @@
 //! Hand-written, bounds-checked protocol parsers. None of them may panic on hostile input.
 
 pub mod arp;
+pub mod detail;
 pub mod dissect;
 pub mod error;
 pub mod ethernet;
@@ -11,6 +12,7 @@ pub mod summary;
 pub mod tcp;
 pub mod udp;
 
+pub use detail::{PacketDetail, build_detail};
 pub use dissect::{Dissection, L3, L4, dissect};
 pub use error::ParseError;
 pub use summary::{PacketSummary, summarize};

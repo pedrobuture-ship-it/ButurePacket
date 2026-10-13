@@ -128,7 +128,7 @@ export function PacketTable() {
 
   return (
     <div role="table" aria-label="Packets" aria-rowcount={count} className="relative flex h-full min-h-0 flex-col">
-      <div role="row" className="grid shrink-0 border-b border-line bg-surface px-2 text-xs font-medium text-muted" style={{ gridTemplateColumns: PACKET_COLUMNS, overflowY: "hidden", scrollbarGutter: "stable" }}>
+      <div role="row" className="grid shrink-0 border-b border-line bg-surface px-2 text-xs font-medium text-muted" style={{ gridTemplateColumns: PACKET_COLUMNS, overflow: "hidden", scrollbarGutter: "stable" }}>
         {HEADERS.map((h, i) => (
           <div key={h} role="columnheader" className={i === 7 ? "px-2 py-1.5 text-right" : "px-2 py-1.5"}>
             {h}

@@ -40,3 +40,26 @@ export interface PacketSummary {
   info: string;
   issues: string[];
 }
+
+export interface PacketField {
+  name: string;
+  value: string;
+  /** Byte offset of the field within the frame, when it maps to wire bytes. */
+  offset: number | null;
+  length: number;
+}
+
+export interface PacketSection {
+  id: "summary" | "frame" | "ethernet" | "network" | "transport" | "application" | "payload";
+  title: string;
+  offset: number | null;
+  length: number;
+  fields: PacketField[];
+}
+
+export interface PacketDetail {
+  summary: PacketSummary;
+  sections: PacketSection[];
+  /** Captured bytes of the frame. */
+  bytes: number[];
+}
