@@ -1,18 +1,17 @@
-import { useEffect } from "react";
-import { api } from "@/lib/api";
-import { useAppStore } from "@/stores/app";
+import { Sidebar } from "@/app/Sidebar";
+import { StatusBar } from "@/app/StatusBar";
+import { Titlebar } from "@/app/Titlebar";
+import { Workspace } from "@/app/Workspace";
 
 export function App() {
-  const info = useAppStore((s) => s.info);
-  const setInfo = useAppStore((s) => s.setInfo);
-
-  useEffect(() => {
-    api.appInfo().then(setInfo).catch(() => undefined);
-  }, [setInfo]);
-
   return (
-    <main className="flex h-full items-center justify-center font-mono text-sm">
-      ButurePacket {info ? `v${info.version}` : ""}
-    </main>
+    <div className="flex h-full flex-col">
+      <Titlebar />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <Workspace />
+      </div>
+      <StatusBar />
+    </div>
   );
 }

@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   clearScreen: false,
-  server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
+  server: { port: 1431, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },
   test: { environment: "node", include: ["src/**/*.test.{ts,tsx}"] },
 });

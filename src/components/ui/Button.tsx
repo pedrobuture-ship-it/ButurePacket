@@ -22,7 +22,7 @@ export function Button({ variant = "secondary", size = "md", icon, className, ch
       type="button"
       {...rest}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded border font-medium transition-colors duration-150",
+        "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded border font-medium transition-colors duration-150",
         "disabled:cursor-not-allowed disabled:opacity-40",
         size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
         variants[variant],

@@ -50,6 +50,9 @@ body,
   margin: 0;
   overflow: hidden;
   background: var(--color-bg);
+}
+
+body {
   color: var(--color-fg);
   font-family: var(--font-sans);
   font-size: 13px;

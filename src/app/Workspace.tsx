@@ -1,0 +1,31 @@
+import { FilterBar } from "@/app/FilterBar";
+import { EmptyState } from "@/components/ui";
+import { useUiStore, type ViewId } from "@/stores/ui";
+
+const titles: Record<ViewId, string> = {
+  overview: "Overview",
+  capture: "Capture",
+  packets: "Packets",
+  flows: "Flows",
+  map: "Network Map",
+  timeline: "Timeline",
+  dns: "DNS",
+  analytics: "Analytics",
+  saved: "Saved Captures",
+  settings: "Settings",
+};
+
+/** Views that depend on the global filter show the filter bar. */
+const filterable: ViewId[] = ["packets", "flows", "timeline", "dns", "map"];
+
+export function Workspace() {
+  const view = useUiStore((s) => s.view);
+  return (
+    <main className="flex min-w-0 flex-1 flex-col bg-bg">
+      {filterable.includes(view) && <FilterBar />}
+      <div className="min-h-0 flex-1" key={view}>
+        <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
+      </div>
+    </main>
+  );
+}
