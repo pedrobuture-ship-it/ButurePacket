@@ -2,6 +2,7 @@ import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
 import { DnsView } from "@/features/dns/DnsView";
 import { FlowsView } from "@/features/flows/FlowsView";
+import { TopologyView } from "@/features/topology/TopologyView";
 import { PacketsView } from "@/features/packets/PacketsView";
 import { useUiStore, type ViewId } from "@/stores/ui";
 
@@ -19,7 +20,7 @@ const titles: Record<ViewId, string> = {
 };
 
 /** Views that depend on the global filter show the filter bar. */
-const filterable: ViewId[] = ["packets", "flows", "timeline", "map"];
+const filterable: ViewId[] = ["packets", "flows", "timeline"];
 
 export function Workspace() {
   const view = useUiStore((s) => s.view);
@@ -33,6 +34,8 @@ export function Workspace() {
           <FlowsView />
         ) : view === "dns" ? (
           <DnsView />
+        ) : view === "map" ? (
+          <TopologyView />
         ) : (
           <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
         )}
