@@ -14,7 +14,8 @@
     "app:dev": "tauri dev",
     "app:build": "tauri build",
     "rust:check": "cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings && cargo test",
-    "check": "npm run typecheck && npm run lint && npm test"
+    "check": "npm run typecheck && npm run lint && npm test",
+    "perf": "PERF=1 vitest run src/perf"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

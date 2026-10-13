@@ -106,7 +106,7 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<FlowView> {
         process: None,
         tls: tls.and_then(|t| serde_json::from_str(&t).ok()),
         // Sparklines are live-only and not persisted.
-        sparkline: vec![0; crate::flows::flow::SPARK_WINDOW],
+        sparkline: Vec::new(),
     })
 }
 
@@ -188,7 +188,7 @@ mod tests {
                 alpn_offered: vec!["h2".into()],
                 ..Default::default()
             }),
-            sparkline: vec![0; crate::flows::flow::SPARK_WINDOW],
+            sparkline: Vec::new(),
         }
     }
 

@@ -1,5 +1,24 @@
 import { create } from "zustand";
+import { Interner, ListInterner } from "@/lib/intern";
 import type { PacketSummary } from "@/types/ipc";
+
+const strings = new Interner();
+const flagLists = new ListInterner();
+const NO_ISSUES: string[] = [];
+
+/** Shares repeated strings and arrays so a large capture stays small in memory. */
+function compact(p: PacketSummary): PacketSummary {
+  p.sourceMac = strings.intern(p.sourceMac);
+  p.destinationMac = strings.intern(p.destinationMac);
+  p.sourceIp = strings.intern(p.sourceIp);
+  p.destinationIp = strings.intern(p.destinationIp);
+  p.networkProtocol = strings.intern(p.networkProtocol);
+  p.transportProtocol = strings.intern(p.transportProtocol);
+  p.applicationProtocol = strings.intern(p.applicationProtocol);
+  p.tcpFlags = flagLists.intern(p.tcpFlags) as string[] | null;
+  if (p.issues.length === 0) p.issues = NO_ISSUES;
+  return p;
+}
 
 /**
  * Packet rows live in a plain mutable array: copying an immutable array on every
@@ -52,7 +71,7 @@ export const usePacketsStore = create<PacketsStore>((set) => ({
   selectedId: null,
   inspectorOpen: true,
   append: (batch) => {
-    for (const p of batch) packetBuffer.rows.push(p);
+    for (const p of batch) packetBuffer.rows.push(compact(p));
     if (packetBuffer.rows.length > MAX_ROWS + TRIM_CHUNK) {
       packetBuffer.rows.splice(0, packetBuffer.rows.length - MAX_ROWS);
       packetBuffer.generation++;
@@ -69,6 +88,8 @@ export const usePacketsStore = create<PacketsStore>((set) => ({
   },
   clear: () => {
     packetBuffer.rows = [];
+    strings.clear();
+    flagLists.clear();
     set({ count: 0, selectedId: null });
   },
   select: (selectedId) => set({ selectedId }),

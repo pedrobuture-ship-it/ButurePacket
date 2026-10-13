@@ -104,8 +104,8 @@ export interface FlowView {
   domains: string[];
   process: string | null;
   tls: TlsInfo | null;
-  /** Bytes per second for the last 60 seconds. */
-  sparkline: number[];
+  /** Bytes per second for the last 60 seconds. Absent in list updates; fetch with `getFlow`. */
+  sparkline?: number[];
 }
 
 export type DnsStatus = "pending" | "ok" | "failed" | "timeout";

@@ -15,6 +15,7 @@ interface Commands {
   clear_capture: [Record<string, never>, void];
   get_packet_detail: [{ id: number }, PacketDetail];
   get_flows: [Record<string, never>, FlowView[]];
+  get_flow: [{ id: number }, FlowView | null];
   get_events: [Record<string, never>, TimelineEvent[]];
   get_analytics: [Record<string, never>, AnalyticsSnapshot];
   pick_and_open_capture: [Record<string, never>, string | null];
@@ -84,6 +85,7 @@ export const api = {
   setPersistence: (enabled: boolean) => call("set_persistence", { enabled }),
   getAnalytics: () => call("get_analytics", {}),
   getEvents: () => call("get_events", {}),
+  getFlow: (id: number) => call("get_flow", { id }),
   getFlows: () => call("get_flows", {}),
   getPacketDetail: (id: number) => call("get_packet_detail", { id }),
   clearCapture: () => call("clear_capture", {}),

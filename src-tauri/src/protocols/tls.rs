@@ -437,7 +437,14 @@ fn parse_x509(der: &[u8]) -> Option<CertMeta> {
     Some(meta)
 }
 
-#[cfg(test)]
+/// Handshake record builders shared by tests and the synthetic traffic generator.
+#[cfg(any(test, feature = "testgen"))]
+pub mod tests_support {
+    pub use super::tests::{client_hello, server_hello};
+}
+
+#[cfg(any(test, feature = "testgen"))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod tests {
     use super::*;
 

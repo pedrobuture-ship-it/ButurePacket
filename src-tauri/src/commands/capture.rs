@@ -64,23 +64,55 @@ pub fn state_payload(state: SessionState) -> StatePayload {
     StatePayload { state, error: None }
 }
 
-/// Pushes everything one processed batch produced to the frontend.
+/// How often flow, DNS and event changes are pushed to the UI. Packet rows go out every batch.
+pub const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Lets work happen at most once per interval.
+pub struct Throttle(Mutex<Instant>);
+
+impl Throttle {
+    pub fn new() -> Self {
+        Self(Mutex::new(Instant::now()))
+    }
+
+    pub fn due(&self, every: Duration) -> bool {
+        let mut last = self.0.lock_recover();
+        if last.elapsed() >= every {
+            *last = Instant::now();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Default for Throttle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Pushes one processed batch of packet rows to the frontend.
 pub fn emit_processed(app: &AppHandle, out: crate::pipeline::Processed) {
     if !out.packets.is_empty() {
         let _ = app.emit("capture://packets", out.packets);
     }
-    if !out.flows.is_empty() {
-        let _ = app.emit("capture://flows", out.flows);
+}
+
+/// Pushes accumulated flow, DNS and event changes to the frontend.
+pub fn emit_updates(app: &AppHandle, up: crate::pipeline::Updates) {
+    if !up.flows.is_empty() {
+        let _ = app.emit("capture://flows", up.flows);
     }
-    if !out.events.is_empty() {
-        let _ = app.emit("capture://events", out.events);
+    if !up.events.is_empty() {
+        let _ = app.emit("capture://events", up.events);
     }
-    if !out.dns.is_empty() || out.dns_stats.is_some() {
+    if !up.dns.is_empty() || up.dns_stats.is_some() {
         let _ = app.emit(
             "capture://dns",
             DnsPayload {
-                transactions: out.dns,
-                stats: out.dns_stats,
+                transactions: up.dns,
+                stats: up.dns_stats,
             },
         );
     }
@@ -104,6 +136,7 @@ struct TauriSink {
     app: AppHandle,
     pipeline: Arc<Pipeline>,
     last_analytics: Mutex<Instant>,
+    drain: Throttle,
 }
 
 impl CaptureSink for TauriSink {
@@ -112,7 +145,12 @@ impl CaptureSink for TauriSink {
             return;
         }
         match self.pipeline.process_guarded(packets) {
-            Ok(out) => emit_processed(&self.app, out),
+            Ok(out) => {
+                emit_processed(&self.app, out);
+                if self.drain.due(UPDATE_INTERVAL) {
+                    emit_updates(&self.app, self.pipeline.drain_updates());
+                }
+            }
             Err(msg) => {
                 let _ = self.app.emit(
                     "capture://notice",
@@ -129,6 +167,9 @@ impl CaptureSink for TauriSink {
 
     fn on_stats(&self, stats: &StatsSnapshot) {
         let _ = self.app.emit("capture://stats", stats);
+        if self.drain.due(UPDATE_INTERVAL) {
+            emit_updates(&self.app, self.pipeline.drain_updates());
+        }
         // Analytics are recomputed at most once a second: they scan the flow table.
         let mut last = self.last_analytics.lock_recover();
         if last.elapsed() >= ANALYTICS_INTERVAL {
@@ -141,6 +182,10 @@ impl CaptureSink for TauriSink {
     }
 
     fn on_state(&self, state: SessionState, error: Option<&CaptureError>) {
+        if matches!(state, SessionState::Stopped | SessionState::Error) {
+            // Whatever accumulated since the last push must reach the UI before it goes idle.
+            emit_updates(&self.app, self.pipeline.drain_updates());
+        }
         let _ = self.app.emit(
             "capture://state",
             StatePayload {
@@ -181,6 +226,7 @@ pub fn capture_start(
         app,
         pipeline: state.pipeline.clone(),
         last_analytics: Mutex::new(Instant::now()),
+        drain: Throttle::new(),
     };
     *slot = Some(CaptureSession::start(
         Box::new(source),
@@ -299,4 +345,10 @@ pub async fn check_capture_permission()
     tauri::async_runtime::spawn_blocking(crate::capture::permission::check)
         .await
         .map_err(|e| CaptureError::Backend(e.to_string()).into())
+}
+
+/// One flow including its per-second traffic, for the flow inspector.
+#[tauri::command]
+pub fn get_flow(state: State<'_, CaptureState>, id: u64) -> Option<FlowView> {
+    state.pipeline.flow_detail(id)
 }

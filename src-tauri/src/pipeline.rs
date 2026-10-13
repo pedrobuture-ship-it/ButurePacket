@@ -16,15 +16,31 @@ use crate::storage::database::Database;
 use crate::storage::memory::PacketStore;
 use crate::storage::writer::{Job, StorageConfig, StorageStatus, StorageWriter};
 
-/// What one processed batch produced for the UI.
+/// What one processed batch produced: the per-packet rows. Everything else (flows, DNS, events)
+/// accumulates inside the engines and is collected by [`Pipeline::drain_updates`] a few times a
+/// second, so a busy link doesn't re-send thousands of flow updates every batch.
 #[derive(Debug, Default)]
 pub struct Processed {
     /// Shared so the UI event and the database writer don't each need their own copy.
     pub packets: Arc<Vec<PacketSummary>>,
+}
+
+/// Changes accumulated since the last drain.
+#[derive(Debug, Default)]
+pub struct Updates {
     pub flows: Vec<FlowView>,
     pub dns: Vec<DnsTransactionView>,
     pub dns_stats: Option<DnsStats>,
     pub events: Vec<TimelineEvent>,
+}
+
+impl Updates {
+    pub fn is_empty(&self) -> bool {
+        self.flows.is_empty()
+            && self.dns.is_empty()
+            && self.dns_stats.is_none()
+            && self.events.is_empty()
+    }
 }
 
 /// Upper bound on events pushed to the UI per batch (the full history stays in memory).
@@ -103,20 +119,32 @@ impl Pipeline {
             );
             packets.push(summary);
         }
+        drop((flows, dns, tls, events, metrics));
+        let mut store = self.store.lock_recover();
+        for raw in batch {
+            store.push(raw);
+        }
+        drop(store);
+        let packets = Arc::new(packets);
+        if let Some(w) = self.storage.lock_recover().as_ref() {
+            w.submit(Job::Packets(packets.clone()));
+        }
+        Processed { packets }
+    }
+
+    /// Collects flow, DNS and event changes since the previous call (and persists them).
+    pub fn drain_updates(&self) -> Updates {
+        let mut flows = self.flows.lock_recover();
+        let mut dns = self.dns.lock_recover();
+        let mut events = self.events.lock_recover();
         let changed = flows.take_changed();
         let dns_changed = dns.take_changed();
         let dns_stats = dns.take_stats_if_changed();
         events.dns_changed(&dns_changed);
         let mut new_events = events.take_new();
         new_events.truncate(MAX_EVENTS_PER_BATCH);
-        drop((flows, dns, tls, events, metrics));
-        let mut store = self.store.lock_recover();
-        for raw in batch {
-            store.push(raw);
-        }
-        let packets = Arc::new(packets);
+        drop((flows, dns, events));
         if let Some(w) = self.storage.lock_recover().as_ref() {
-            w.submit(Job::Packets(packets.clone()));
             if !changed.is_empty() {
                 w.submit(Job::Flows(changed.clone()));
             }
@@ -127,8 +155,7 @@ impl Pipeline {
                 w.submit(Job::Events(new_events.clone()));
             }
         }
-        Processed {
-            packets,
+        Updates {
             flows: changed,
             dns: dns_changed,
             dns_stats,
@@ -177,6 +204,11 @@ impl Pipeline {
             .lock_recover()
             .as_ref()
             .map(StorageWriter::status)
+    }
+
+    /// One flow with its sparkline, for the inspector.
+    pub fn flow_detail(&self, id: u64) -> Option<FlowView> {
+        self.flows.lock_recover().detailed(id)
     }
 
     /// Rolling metrics, rankings and potential problems for the Analytics screen.
@@ -244,16 +276,18 @@ mod tests {
     fn batch_produces_summaries_flows_and_stores_raw() {
         let p = Pipeline::default();
         let out = p.process(vec![frame(1, 5000), frame(2, 5000), frame(3, 6000)]);
+        let up = p.drain_updates();
         assert_eq!(out.packets.len(), 3);
-        assert_eq!(out.flows.len(), 2);
+        assert_eq!(up.flows.len(), 2);
         assert_eq!(out.packets[0].flow_id, out.packets[1].flow_id);
         assert_ne!(out.packets[0].flow_id, out.packets[2].flow_id);
         assert!(out.packets[0].flow_id.is_some());
         assert_eq!(p.store.lock_recover().get(2).unwrap().id, 2);
         // second batch only reports flows that changed
-        let out = p.process(vec![frame(4, 6000)]);
-        assert_eq!(out.flows.len(), 1);
-        assert_eq!(out.flows[0].total_packets, 2);
+        p.process(vec![frame(4, 6000)]);
+        let up = p.drain_updates();
+        assert_eq!(up.flows.len(), 1);
+        assert_eq!(up.flows[0].total_packets, 2);
     }
 
     #[test]
@@ -309,18 +343,19 @@ mod tests {
             ),
             tcp_syn(3),
         ]);
-        assert_eq!(out.dns.len(), 1);
-        assert_eq!(out.dns[0].latency, Some(10_000));
-        assert!(out.dns_stats.is_some());
-        let tcp = out.flows.iter().find(|f| f.protocol == "TCP").unwrap();
+        let up = p.drain_updates();
+        assert_eq!(up.dns.len(), 1);
+        assert_eq!(up.dns[0].latency, Some(10_000));
+        assert!(up.dns_stats.is_some());
+        let tcp = up.flows.iter().find(|f| f.protocol == "TCP").unwrap();
         assert_eq!(tcp.domains, vec!["api.github.com"]);
-        let dns_flow = out.flows.iter().find(|f| f.protocol == "UDP").unwrap();
+        let dns_flow = up.flows.iter().find(|f| f.protocol == "UDP").unwrap();
         assert!(dns_flow.domains.is_empty());
         assert_eq!(out.packets[1].application_protocol.as_deref(), Some("DNS"));
         assert_eq!(out.packets[1].latency, Some(10_000));
         assert_eq!(out.packets[0].domain.as_deref(), Some("api.github.com"));
         assert_eq!(out.packets[0].latency, None);
-        let kinds: Vec<_> = out.events.iter().map(|e| e.kind).collect();
+        let kinds: Vec<_> = up.events.iter().map(|e| e.kind).collect();
         for k in [
             EventKind::DnsQuery,
             EventKind::DnsResponse,
@@ -358,10 +393,11 @@ mod tests {
             seg(1, true, 1000, &client_hello("github.com", &["h2"])),
             seg(2, false, 5000, &server_hello(true, 0x1301, None)),
         ]);
+        let up = p.drain_updates();
         assert_eq!(out.packets[0].info, "Client Hello (SNI: github.com)");
         assert_eq!(out.packets[0].application_protocol.as_deref(), Some("TLS"));
         assert_eq!(out.packets[1].info, "Server Hello");
-        let f = out.flows.iter().find(|f| f.protocol == "TCP").unwrap();
+        let f = up.flows.iter().find(|f| f.protocol == "TCP").unwrap();
         let tls = f.tls.as_ref().unwrap();
         assert_eq!(
             (tls.sni.as_deref(), tls.version.as_deref()),
@@ -480,11 +516,13 @@ mod tests {
             .collect();
         write_pcap(std::fs::File::create(&path).unwrap(), raws.iter()).unwrap();
 
-        struct Sink<'a>(&'a Pipeline, std::sync::Mutex<Vec<Processed>>);
+        struct Sink<'a>(&'a Pipeline, std::sync::Mutex<Vec<(Processed, Updates)>>);
         impl OfflineSink for Sink<'_> {
             fn progress(&self, _: &Progress) {}
             fn batch(&self, packets: Vec<RawPacket>) {
-                self.1.lock_recover().push(self.0.process(packets));
+                let out = self.0.process(packets);
+                let up = self.0.drain_updates();
+                self.1.lock_recover().push((out, up));
             }
         }
         let p = Pipeline::default();
@@ -496,7 +534,7 @@ mod tests {
         assert_eq!(out.packets, 8);
 
         let outs = sink.1.lock_recover();
-        let packets: Vec<_> = outs.iter().flat_map(|o| o.packets.iter()).collect();
+        let packets: Vec<_> = outs.iter().flat_map(|(o, _)| o.packets.iter()).collect();
         assert_eq!(packets.len(), 8);
         assert_eq!(packets[0].info, "Standard query A api.github.com");
         assert_eq!(packets[1].latency, Some(21_000));
@@ -516,7 +554,7 @@ mod tests {
 
         let kinds: Vec<_> = outs
             .iter()
-            .flat_map(|o| o.events.iter().map(|e| e.kind))
+            .flat_map(|(_, u)| u.events.iter().map(|e| e.kind))
             .collect();
         for k in [
             EventKind::DnsQuery,
@@ -568,5 +606,121 @@ mod tests {
         assert!(crate::storage::events::event_count(&db).unwrap() >= 5);
         assert_eq!(db.meta("source").unwrap().as_deref(), Some("e2e.pcap"));
         assert!(p.storage_status().is_none());
+    }
+
+    /// Throughput benchmark. Run with:
+    /// `cargo test --release --lib perf_pipeline -- --ignored --nocapture`
+    #[test]
+    #[ignore = "benchmark"]
+    fn perf_pipeline() {
+        use crate::testgen::Synth;
+        use std::time::Instant;
+
+        fn run(label: &str, n: usize, persist: bool) {
+            let dir = tempfile::tempdir().unwrap();
+            let p = Pipeline::default();
+            if persist {
+                p.attach_storage(&dir.path().join("b.db"), StorageConfig::import(), "bench")
+                    .unwrap();
+            }
+            let mut synth = Synth::new(42, 800);
+            let batches: Vec<Vec<RawPacket>> = (0..n / 2000).map(|_| synth.batch(2000)).collect();
+            let (mut t_proc, mut t_json, mut json_bytes) = (0.0f64, 0.0f64, 0usize);
+            for (i, b) in batches.into_iter().enumerate() {
+                let t = Instant::now();
+                let out = p.process(b);
+                t_proc += t.elapsed().as_secs_f64();
+                // what the IPC layer does with the result: rows every batch, flows/DNS/events
+                // roughly every 250 ms (about 12 batches of 2000 at 100k pkt/s)
+                let t = Instant::now();
+                json_bytes += serde_json::to_vec(&out.packets).unwrap().len();
+                if i % 12 == 11 {
+                    let up = p.drain_updates();
+                    json_bytes += serde_json::to_vec(&up.flows).unwrap().len();
+                    json_bytes += serde_json::to_vec(&up.events).unwrap().len();
+                    json_bytes += serde_json::to_vec(&up.dns).unwrap().len();
+                }
+                t_json += t.elapsed().as_secs_f64();
+            }
+            let t = Instant::now();
+            let snap = p.analytics(false);
+            let flows = p.flows.lock_recover().len();
+            println!(
+                "{label:>28}: analytics() with {flows} flows took {:.1} ms ({} problems)",
+                t.elapsed().as_secs_f64() * 1000.0,
+                snap.problems.len()
+            );
+            if persist {
+                p.detach_storage().unwrap().unwrap();
+            }
+            println!(
+                "{label:>28}: {n:>8} pkts  process {:>7.0} pkt/s  json {:>7.0} pkt/s  ({:.0} B/pkt on the wire)",
+                n as f64 / t_proc,
+                n as f64 / t_json,
+                json_bytes as f64 / n as f64
+            );
+        }
+        for n in [20_000, 100_000, 500_000, 1_000_000] {
+            run("pipeline", n, false);
+        }
+        run("pipeline + sqlite", 500_000, true);
+    }
+
+    /// Where does per-packet time go? Run with `--ignored --nocapture` in release.
+    #[test]
+    #[ignore = "benchmark"]
+    fn perf_breakdown() {
+        use crate::testgen::Synth;
+        use std::time::Instant;
+        let mut synth = Synth::new(42, 800);
+        let raws = synth.batch(200_000);
+        let n = raws.len() as f64;
+        let t = Instant::now();
+        let ds: Vec<_> = raws.iter().map(|r| dissect(&r.data)).collect();
+        println!(
+            "dissect only           {:>9.0} pkt/s",
+            n / t.elapsed().as_secs_f64()
+        );
+        let t = Instant::now();
+        let sums: Vec<_> = raws
+            .iter()
+            .zip(&ds)
+            .map(|(r, d)| summarize_dissection(r, d))
+            .collect();
+        println!(
+            "summarize (strings)    {:>9.0} pkt/s",
+            n / t.elapsed().as_secs_f64()
+        );
+        let t = Instant::now();
+        let mut eng = FlowEngine::default();
+        for (r, d) in raws.iter().zip(&ds) {
+            if let Some(i) = FlowInput::from_dissection(r, d) {
+                eng.observe_detailed(&i);
+            }
+        }
+        println!(
+            "flow engine            {:>9.0} pkt/s",
+            n / t.elapsed().as_secs_f64()
+        );
+        let t = Instant::now();
+        let bytes: usize = sums
+            .chunks(2000)
+            .map(|c| serde_json::to_vec(c).unwrap().len())
+            .sum();
+        println!(
+            "json packets           {:>9.0} pkt/s  ({:.0} B/pkt)",
+            n / t.elapsed().as_secs_f64(),
+            bytes as f64 / n
+        );
+        let views = eng.snapshot();
+        let t = Instant::now();
+        let fb = serde_json::to_vec(&views).unwrap().len();
+        println!(
+            "json {} flows: {:.1} KB total, {:.0} B/flow, {:.1} ms",
+            views.len(),
+            fb as f64 / 1024.0,
+            fb as f64 / views.len() as f64,
+            t.elapsed().as_secs_f64() * 1000.0
+        );
     }
 }

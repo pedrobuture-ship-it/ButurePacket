@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, BookOpen, Copy } from "lucide-react";
 import { Badge, Button, EmptyState, Modal, Sparkline, Tabs } from "@/components/ui";
 import { StoryPanel, useStory } from "@/features/story/StoryPanel";
 import { storyToText } from "@/features/story/story";
+import { api } from "@/lib/api";
 import { formatBytes, formatCount, formatLatency, formatSpan, formatTimestamp } from "@/lib/format";
 import { eventBuffer, useEventsStore } from "@/stores/events";
 import { formatClock } from "@/features/timeline/model";
@@ -210,9 +211,31 @@ function StoryModal({ flow, onClose }: { flow: FlowView; onClose: () => void }) 
   );
 }
 
+/** The per-second traffic of one flow. List updates leave it out, so the inspector asks for it. */
+function useSparkline(flowId: number, active: boolean): number[] {
+  const [values, setValues] = useState<{ id: number; spark: number[] } | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    const load = () =>
+      api
+        .getFlow(flowId)
+        .then((f) => !cancelled && f?.sparkline && setValues({ id: flowId, spark: f.sparkline }))
+        .catch(() => undefined);
+    void load();
+    const timer = setInterval(load, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [flowId, active]);
+  return values?.id === flowId ? values.spark : new Array<number>(60).fill(0);
+}
+
 export function FlowInspector({ flow }: { flow: FlowView }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [storyOpen, setStoryOpen] = useState(false);
+  const sparkline = useSparkline(flow.id, tab === "overview");
   const problems = flowProblems(flow);
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -235,7 +258,7 @@ export function FlowInspector({ flow }: { flow: FlowView }) {
             <Diagram flow={flow} />
             <div>
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted">Traffic · last 60 s</p>
-              <Sparkline values={flow.sparkline} width={300} height={40} className="w-full" />
+              <Sparkline values={sparkline} width={300} height={40} className="w-full" />
             </div>
             <Rows
               rows={[

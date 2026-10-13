@@ -276,82 +276,98 @@ fn downsample(all: &[Bucket], max_points: usize) -> Vec<Bucket> {
         .collect()
 }
 
-fn top(map: HashMap<String, RankEntry>) -> Vec<RankEntry> {
-    let mut v: Vec<RankEntry> = map.into_values().collect();
-    v.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.key.cmp(&b.key)));
-    v.truncate(TOP_N);
-    v
+#[derive(Default, Clone, Copy)]
+struct Acc {
+    bytes: u64,
+    packets: u64,
+    flows: u64,
 }
 
-fn bump(map: &mut HashMap<String, RankEntry>, key: String, bytes: u64, packets: u64) {
-    let e = map.entry(key.clone()).or_insert(RankEntry {
-        key,
-        bytes: 0,
-        packets: 0,
-        flows: 0,
-    });
-    e.bytes += bytes;
-    e.packets += packets;
-    e.flows += 1;
+fn add<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Acc>, key: K, bytes: u64, packets: u64) {
+    let a = map.entry(key).or_default();
+    a.bytes += bytes;
+    a.packets += packets;
+    a.flows += 1;
 }
 
-fn protocol_label(f: &Flow) -> String {
-    if f.tls.is_some() {
-        return "TLS".into();
+/// Largest `TOP_N` by bytes (ties by key text), turned into display rows. Keys are only turned
+/// into strings here, for the few that survive, not once per flow.
+fn top<K: std::hash::Hash + Eq>(
+    map: HashMap<K, Acc>,
+    label: impl Fn(&K) -> String,
+) -> Vec<RankEntry> {
+    let mut v: Vec<(K, Acc)> = map.into_iter().collect();
+    // Partial selection first so a huge table isn't fully sorted. Keep a margin so that ties at
+    // the cut are still ordered by key below.
+    let keep = TOP_N * 4;
+    if v.len() > keep {
+        v.select_nth_unstable_by(keep, |a, b| b.1.bytes.cmp(&a.1.bytes));
+        v.truncate(keep);
     }
-    // Same port heuristics as the flow list, so the two screens agree.
-    crate::flows::FlowView::of(f)
-        .application_protocol
-        .unwrap_or_else(|| f.proto.name())
+    let mut rows: Vec<RankEntry> = v
+        .into_iter()
+        .map(|(k, a)| RankEntry {
+            key: label(&k),
+            bytes: a.bytes,
+            packets: a.packets,
+            flows: a.flows,
+        })
+        .collect();
+    rows.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.key.cmp(&b.key)));
+    rows.truncate(TOP_N);
+    rows
 }
 
 pub fn rank<'a>(flows: impl Iterator<Item = &'a Flow>) -> Rankings {
-    let (mut hosts, mut domains, mut protocols, mut ports, mut talkers) = (
-        HashMap::new(),
-        HashMap::new(),
-        HashMap::new(),
-        HashMap::new(),
-        HashMap::new(),
-    );
+    use crate::flows::{Proto, guess_app_label};
+    use std::net::IpAddr;
+    let mut hosts: HashMap<IpAddr, Acc> = HashMap::new();
+    let mut talkers: HashMap<IpAddr, Acc> = HashMap::new();
+    let mut domains: HashMap<&'a str, Acc> = HashMap::new();
+    let mut protocols: HashMap<(Option<&'static str>, Proto), Acc> = HashMap::new();
+    let mut ports: HashMap<(u16, Proto), Acc> = HashMap::new();
     for f in flows {
         let (bytes, packets) = (f.total_bytes(), f.total_packets());
-        bump(&mut hosts, f.endpoint_b.ip.to_string(), bytes, packets);
+        add(&mut hosts, f.endpoint_b.ip, bytes, packets);
         if let Some(d) = f
             .tls
             .as_ref()
-            .and_then(|t| t.sni.clone())
-            .or_else(|| f.domains.first().cloned())
+            .and_then(|t| t.sni.as_deref())
+            .or_else(|| f.domains.first().map(String::as_str))
         {
-            bump(&mut domains, d, bytes, packets);
+            add(&mut domains, d, bytes, packets);
         }
-        bump(&mut protocols, protocol_label(f), bytes, packets);
+        // Same port heuristics as the flow list, so the two screens agree.
+        add(
+            &mut protocols,
+            (guess_app_label(f), f.proto),
+            bytes,
+            packets,
+        );
         if f.endpoint_b.port > 0 {
-            bump(
-                &mut ports,
-                format!("{}/{}", f.endpoint_b.port, f.proto.name()),
-                bytes,
-                packets,
-            );
+            add(&mut ports, (f.endpoint_b.port, f.proto), bytes, packets);
         }
-        bump(
+        add(
             &mut talkers,
-            f.endpoint_a.ip.to_string(),
+            f.endpoint_a.ip,
             f.bytes_a_to_b,
             f.packets_a_to_b,
         );
-        bump(
+        add(
             &mut talkers,
-            f.endpoint_b.ip.to_string(),
+            f.endpoint_b.ip,
             f.bytes_b_to_a,
             f.packets_b_to_a,
         );
     }
     Rankings {
-        hosts: top(hosts),
-        domains: top(domains),
-        protocols: top(protocols),
-        ports: top(ports),
-        talkers: top(talkers),
+        hosts: top(hosts, |ip| ip.to_string()),
+        domains: top(domains, |d| (*d).to_string()),
+        protocols: top(protocols, |(app, proto)| {
+            app.map_or_else(|| proto.name(), str::to_string)
+        }),
+        ports: top(ports, |(port, proto)| format!("{port}/{}", proto.name())),
+        talkers: top(talkers, |ip| ip.to_string()),
     }
 }
 

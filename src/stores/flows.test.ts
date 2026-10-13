@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_FLOWS, flowBuffer, useFlowsStore } from "./flows";
+import { MAX_FLOWS, flowBuffer, publishInterval, useFlowsStore } from "./flows";
 import { makeFlow } from "@/features/flows/testFlow";
 
 describe("flows store", () => {
@@ -33,5 +33,11 @@ describe("flows store", () => {
     expect(flowBuffer.byId.size).toBe(MAX_FLOWS);
     expect(flowBuffer.byId.has(1)).toBe(false);
     expect(flowBuffer.byId.has(many.length)).toBe(true);
+  });
+
+  it("refreshes big tables less often", () => {
+    expect(publishInterval(10)).toBe(250);
+    expect(publishInterval(100_000)).toBe(1000);
+    expect(publishInterval(10_000_000)).toBe(2000);
   });
 });

@@ -71,8 +71,21 @@ export function parseCidr(text: string): CidrValue | null {
   return { family: a.family, base: (a.value >> hostBits) << hostBits, bits };
 }
 
+/** Parsed addresses by text. Captures repeat the same few addresses, and BigInt parsing is slow. */
+const addressCache = new Map<string, { family: 4 | 6; value: bigint } | null>();
+const ADDRESS_CACHE_MAX = 100_000;
+
+function cachedAddress(text: string): { family: 4 | 6; value: bigint } | null {
+  const hit = addressCache.get(text);
+  if (hit !== undefined) return hit;
+  const parsed = parseAddress(text);
+  if (addressCache.size >= ADDRESS_CACHE_MAX) addressCache.clear();
+  addressCache.set(text, parsed);
+  return parsed;
+}
+
 export function cidrContains(c: CidrValue, address: string): boolean {
-  const a = parseAddress(address);
+  const a = cachedAddress(address);
   if (!a || a.family !== c.family) return false;
   const hostBits = BigInt((c.family === 4 ? 32 : 128) - c.bits);
   return (a.value >> hostBits) << hostBits === c.base;

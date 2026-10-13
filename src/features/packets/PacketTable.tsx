@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
 import { ContextMenu, EmptyState, type ContextMenuState } from "@/components/ui";
@@ -8,7 +8,7 @@ import { useUiStore } from "@/stores/ui";
 import type { PacketSummary } from "@/types/ipc";
 import { PACKET_COLUMNS, PacketRow, ROW_HEIGHT } from "./PacketRow";
 import { endpoint, packetToText } from "./packetText";
-import { filteredIndices, makePacketView } from "./packetView";
+import { filterProgress, makePacketView } from "./packetView";
 
 const HEADERS = ["#", "Time", "Source", "Destination", "Protocol", "Src Port", "Dst Port", "Length", "Info"];
 const FOLLOW_THRESHOLD = ROW_HEIGHT * 2;
@@ -25,7 +25,15 @@ export function PacketTable() {
   const applyFilter = useUiStore((s) => s.applyFilter);
   const filterAst = useUiStore((s) => s.filterAst);
   const filtered = useUiStore((s) => s.filter !== "");
-  const view = useMemo(() => makePacketView(filteredIndices(filterAst, rowCount), rowCount), [filterAst, rowCount]);
+  // Filtering a very large buffer is sliced into ~8 ms steps; `tick` re-runs it until done.
+  const [tick, setTick] = useState(0);
+  const progress = useMemo(() => filterProgress(filterAst, rowCount, 8), [filterAst, rowCount, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (progress.done) return;
+    const h = setTimeout(() => setTick((t) => t + 1), 0);
+    return () => clearTimeout(h);
+  }, [progress, tick]);
+  const view = useMemo(() => makePacketView(progress.indices, rowCount), [progress, rowCount]);
   const count = view.count;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -153,6 +161,11 @@ export function PacketTable() {
           </div>
         )}
       </div>
+      {!progress.done && (
+        <div role="status" className="absolute right-4 top-9 rounded border border-line-strong bg-raised px-2 py-1 font-mono text-[11px] text-muted">
+          Filtering… {Math.floor((progress.processed / Math.max(1, rowCount)) * 100)}%
+        </div>
+      )}
       {unseen > 0 && (
         <button
           type="button"

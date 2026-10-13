@@ -50,6 +50,7 @@ struct FileSink {
     first_ts: Mutex<Option<i64>>,
     last_ts: AtomicU64,
     last_analytics: Mutex<Instant>,
+    drain: super::capture::Throttle,
 }
 
 impl FileSink {
@@ -104,6 +105,9 @@ impl OfflineSink for FileSink {
         self.sent_rows
             .fetch_add(out.packets.len() as u64, Ordering::Relaxed);
         emit_processed(&self.app, out);
+        if self.drain.due(super::capture::UPDATE_INTERVAL) {
+            super::capture::emit_updates(&self.app, self.pipeline.drain_updates());
+        }
 
         let total_packets = self.packets.fetch_add(n, Ordering::Relaxed) + n;
         let total_bytes = self.bytes.fetch_add(bytes, Ordering::Relaxed) + bytes;
@@ -178,8 +182,10 @@ pub fn start_open(app: AppHandle, state: &CaptureState, path: PathBuf) -> Result
                 first_ts: Mutex::new(None),
                 last_ts: AtomicU64::new(0),
                 last_analytics: Mutex::new(Instant::now()),
+                drain: super::capture::Throttle::new(),
             };
             let result = offline::run(&validated, &cancel, &sink);
+            super::capture::emit_updates(&app, pipeline.drain_updates());
             let _ = app.emit("capture://analytics", pipeline.analytics(true));
             let mut done = sink.payload(None);
             done.done = true;

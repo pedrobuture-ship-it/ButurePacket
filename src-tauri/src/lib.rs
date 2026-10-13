@@ -9,6 +9,8 @@ pub mod process;
 pub mod protocols;
 pub mod security;
 pub mod storage;
+#[cfg(any(test, feature = "testgen"))]
+pub mod testgen;
 pub mod util;
 
 pub fn run() {
@@ -41,6 +43,7 @@ pub fn run() {
             commands::capture::clear_capture,
             commands::capture::get_packet_detail,
             commands::capture::get_flows,
+            commands::capture::get_flow,
             commands::capture::get_dns,
             commands::capture::get_events,
             commands::capture::get_analytics,

@@ -287,6 +287,54 @@ impl Dns {
     }
 }
 
+/// Message builders shared by tests and the synthetic traffic generator.
+#[cfg(any(test, feature = "testgen"))]
+pub mod tests_support {
+    use super::TYPE_A;
+
+    fn encode_name(name: &str) -> Vec<u8> {
+        let mut v = vec![];
+        for label in name.split('.').filter(|l| !l.is_empty()) {
+            v.push(label.len() as u8);
+            v.extend(label.as_bytes());
+        }
+        v.push(0);
+        v
+    }
+
+    pub fn dns_query(id: u16, name: &str) -> Vec<u8> {
+        let mut m = vec![
+            (id >> 8) as u8,
+            id as u8,
+            0x01,
+            0x00,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+        m.extend(encode_name(name));
+        m.extend([0, TYPE_A as u8, 0, 1]);
+        m
+    }
+
+    pub fn dns_response(id: u16, name: &str, addrs: &[[u8; 4]]) -> Vec<u8> {
+        let mut m = dns_query(id, name);
+        m[2] = 0x81;
+        m[3] = 0x80;
+        m[7] = addrs.len() as u8;
+        for a in addrs {
+            m.extend([0xC0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4]);
+            m.extend(a);
+        }
+        m
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

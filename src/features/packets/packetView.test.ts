@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { filteredIndices, invalidatePacketView, makePacketView } from "./packetView";
+import { filterProgress, filteredIndices, invalidatePacketView, makePacketView } from "./packetView";
 import { packetBuffer, usePacketsStore } from "@/stores/packets";
 import { parseFilter } from "@/lib/filter";
 import type { PacketSummary } from "@/types/ipc";
@@ -56,5 +56,29 @@ describe("packet view", () => {
     expect(v.positionOfId(999)).toBe(-1);
     expect(v.at(99)).toBeUndefined();
     expect(packetBuffer.rows).toHaveLength(4);
+  });
+
+  it("can work in time slices and resume where it stopped", () => {
+    usePacketsStore.getState().append(Array.from({ length: 50_000 }, (_, i) => row(i + 1, i % 2 ? 443 : 80)));
+    const f = ast("dst.port = 443");
+    let p = filterProgress(f, 50_000, 0); // zero budget: one 2,048-row slice at a time
+    expect(p.done).toBe(false);
+    expect(p.processed).toBeGreaterThan(0);
+    expect(p.processed).toBeLessThanOrEqual(2048);
+    let guard = 0;
+    while (!p.done && guard++ < 100) p = filterProgress(f, 50_000, 0);
+    expect(p.done).toBe(true);
+    expect(p.indices).toHaveLength(25_000);
+    expect(p.indices?.[0]).toBe(1);
+    expect(filterProgress(null, 50_000).indices).toBeNull();
+  });
+
+  it("restarts when rows were trimmed from the front", () => {
+    usePacketsStore.getState().append([row(1, 443), row(2, 443)]);
+    const f = ast("dst.port = 443");
+    expect(filteredIndices(f, 2)).toEqual([0, 1]);
+    packetBuffer.rows.splice(0, 1);
+    packetBuffer.generation++;
+    expect(filteredIndices(f, 1)).toEqual([0]);
   });
 });

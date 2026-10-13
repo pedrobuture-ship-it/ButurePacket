@@ -37,6 +37,9 @@ pub struct FlowView {
     pub domains: Vec<String>,
     pub process: Option<String>,
     pub tls: Option<TlsInfo>,
+    /// Bytes per second for the last minute. Empty in list updates (it is large and only the
+    /// inspector shows it); fetch a single flow with `FlowView::detailed` for the full value.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sparkline: Vec<u64>,
 }
 
@@ -45,7 +48,7 @@ impl FlowView {
         Self {
             id: f.id,
             protocol: f.proto.name(),
-            application_protocol: guess_app(f),
+            application_protocol: guess_app_label(f).map(str::to_string),
             endpoint_a: f.endpoint_a,
             endpoint_b: f.endpoint_b,
             started_at: f.started_at,
@@ -66,19 +69,24 @@ impl FlowView {
             domains: f.domains.clone(),
             process: f.process.clone(),
             tls: f.tls.clone(),
-            sparkline: {
-                let s = f.sparkline();
-                debug_assert_eq!(s.len(), SPARK_WINDOW);
-                s
-            },
+            sparkline: Vec::new(),
         }
+    }
+
+    /// Like [`FlowView::of`] but with the sparkline filled in.
+    pub fn detailed(f: &Flow) -> Self {
+        let mut v = Self::of(f);
+        v.sparkline = f.sparkline();
+        debug_assert_eq!(v.sparkline.len(), SPARK_WINDOW);
+        v
     }
 }
 
-fn guess_app(f: &Flow) -> Option<String> {
+/// Application protocol guessed from TLS metadata and well-known ports.
+pub fn guess_app_label(f: &Flow) -> Option<&'static str> {
     use super::key::Proto::{Tcp, Udp};
     if f.tls.is_some() {
-        return Some("TLS".to_string());
+        return Some("TLS");
     }
     let by_port = |p: u16| match (f.proto, p) {
         (Tcp | Udp, 53) => Some("DNS"),
@@ -91,9 +99,7 @@ fn guess_app(f: &Flow) -> Option<String> {
         (Tcp, 22) => Some("SSH"),
         _ => None,
     };
-    by_port(f.endpoint_b.port)
-        .or_else(|| by_port(f.endpoint_a.port))
-        .map(str::to_string)
+    by_port(f.endpoint_b.port).or_else(|| by_port(f.endpoint_a.port))
 }
 
 /// Result of folding one packet into the engine.
@@ -215,6 +221,11 @@ impl FlowEngine {
 
     pub fn get(&self, id: u64) -> Option<&Flow> {
         self.flows.get(&id)
+    }
+
+    /// One flow with its sparkline, for the inspector.
+    pub fn detailed(&self, id: u64) -> Option<FlowView> {
+        self.flows.get(&id).map(FlowView::detailed)
     }
 
     pub fn get_mut(&mut self, id: u64) -> Option<&mut Flow> {

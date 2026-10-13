@@ -18,6 +18,15 @@ serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 thiserror = "2"
+etherparse = { version = "0.19", optional = true }
+
+[features]
+# Synthetic traffic generator used by benchmarks and the `gen_pcap` example.
+testgen = ["dep:etherparse"]
+
+[[example]]
+name = "gen_pcap"
+required-features = ["testgen"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
