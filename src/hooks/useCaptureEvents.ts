@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { api, errorMessage, on } from "@/lib/api";
+import { api, errorMessage, isIpcError, on } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
+import { usePacketsStore } from "@/stores/packets";
 import type { SessionState } from "@/types/ipc";
 import type { CaptureState } from "@/types/capture";
 
@@ -18,6 +19,7 @@ export function useCaptureEvents() {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
       on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://packets", (batch) => usePacketsStore.getState().append(batch)),
       on("capture://state", ({ state, error }) => {
         if (error) store.fail(error.message);
         else store.setState(mapState[state]);
@@ -26,7 +28,10 @@ export function useCaptureEvents() {
     api
       .listInterfaces()
       .then(store.setInterfaces)
-      .catch((e) => store.fail(errorMessage(e)));
+      .catch((e) => {
+        // Plain-browser dev sessions have no backend; that is not a user-facing failure.
+        if (!(isIpcError(e) && e.kind === "unavailable")) store.fail(errorMessage(e));
+      });
     return () => {
       unlisten.forEach((p) => p.then((f) => f()).catch(() => undefined));
     };

@@ -19,3 +19,12 @@ describe("format", () => {
   });
   it("formats percent", () => expect(formatPercent(0.24)).toBe("24%"));
 });
+
+import { formatTimestamp } from "./format";
+
+describe("formatTimestamp", () => {
+  it("renders local time with milliseconds", () => {
+    const d = new Date(2024, 11, 14, 14, 22, 1, 210);
+    expect(formatTimestamp(d.getTime() * 1000)).toBe("14:22:01.210");
+  });
+});

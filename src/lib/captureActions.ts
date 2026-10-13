@@ -1,5 +1,6 @@
 import { api, errorMessage } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
+import { usePacketsStore } from "@/stores/packets";
 
 const st = () => useCaptureStore.getState();
 
@@ -17,12 +18,17 @@ export const captureActions = {
     const iface = st().selectedInterface;
     if (!iface) return;
     st().reset();
+    usePacketsStore.getState().clear();
     return run(() => api.captureStart(iface));
   },
   pause: () => run(api.capturePause),
   resume: () => run(api.captureResume),
   stop: () => run(api.captureStop),
-  clear: () => st().reset(),
+  clear: () => {
+    st().reset();
+    usePacketsStore.getState().clear();
+    return run(api.clearCapture);
+  },
   openFile: () => undefined,
   save: () => undefined,
 };

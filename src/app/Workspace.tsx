@@ -1,5 +1,6 @@
 import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
+import { PacketsView } from "@/features/packets/PacketsView";
 import { useUiStore, type ViewId } from "@/stores/ui";
 
 const titles: Record<ViewId, string> = {
@@ -24,7 +25,11 @@ export function Workspace() {
     <main className="flex min-w-0 flex-1 flex-col bg-bg">
       {filterable.includes(view) && <FilterBar />}
       <div className="min-h-0 flex-1" key={view}>
-        <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
+        {view === "packets" ? (
+          <PacketsView />
+        ) : (
+          <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
+        )}
       </div>
     </main>
   );

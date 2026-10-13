@@ -33,11 +33,18 @@ export function errorMessage(e: unknown): string {
   return typeof e === "string" ? e : "Unexpected error.";
 }
 
+const inDesktopShell = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 export function call<K extends keyof Commands>(cmd: K, args: Commands[K][0]): Promise<Commands[K][1]> {
+  if (!inDesktopShell()) {
+    return Promise.reject<Commands[K][1]>({ kind: "unavailable", message: "ButurePacket must run inside the desktop app." } satisfies IpcError);
+  }
   return invoke<Commands[K][1]>(cmd, args);
 }
 
 export function on<K extends keyof Events>(event: K, handler: (payload: Events[K]) => void): Promise<UnlistenFn> {
+  // Outside the desktop shell (plain browser, tests) there is no event bus.
+  if (!inDesktopShell()) return Promise.resolve(() => undefined);
   return listen<Events[K]>(event, (e) => handler(e.payload));
 }
 

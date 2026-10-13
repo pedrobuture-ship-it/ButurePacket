@@ -34,3 +34,10 @@ export function formatDuration(ms: number): string {
 export function formatPercent(fraction: number, digits = 0): string {
   return `${(fraction * 100).toFixed(digits)}%`;
 }
+
+/** Microseconds since epoch → local "14:22:01.210". */
+export function formatTimestamp(micros: number): string {
+  const d = new Date(Math.floor(micros / 1000));
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
