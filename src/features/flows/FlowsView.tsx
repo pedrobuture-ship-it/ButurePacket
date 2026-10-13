@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { Select, ResizablePanel, EmptyState } from "@/components/ui";
+import { FlowSubject } from "@/lib/filter/adapters";
+import { filterItems } from "@/lib/filter/apply";
 import { flowBuffer, useFlowsStore } from "@/stores/flows";
+import { useUiStore } from "@/stores/ui";
 import { FlowInspector } from "./FlowInspector";
 import { FlowTable } from "./FlowTable";
 import { FLOW_SORTS, type FlowSort, sortFlows } from "./sort";
@@ -10,8 +13,9 @@ export function FlowsView() {
   const selectedId = useFlowsStore((s) => s.selectedId);
   const select = useFlowsStore((s) => s.select);
   const [sort, setSort] = useState<FlowSort>("traffic");
+  const filterAst = useUiStore((s) => s.filterAst);
 
-  const flows = useMemo(() => sortFlows([...flowBuffer.byId.values()], sort), [version, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const flows = useMemo(() => sortFlows(filterItems(flowBuffer.byId.values(), filterAst, new FlowSubject()), sort), [version, sort, filterAst]); // eslint-disable-line react-hooks/exhaustive-deps
   const selected = selectedId === null ? null : (flowBuffer.byId.get(selectedId) ?? null);
 
   return (

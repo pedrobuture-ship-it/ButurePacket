@@ -3,6 +3,9 @@ import { Activity, Maximize2, X } from "lucide-react";
 import { Badge, Button, EmptyState, IconButton, Input, VirtualTable, type BadgeTone, type VColumn } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { sanitizeText } from "@/lib/sanitize";
+import { EventSubject } from "@/lib/filter/adapters";
+import { filterItems } from "@/lib/filter/apply";
+import { useUiStore } from "@/stores/ui";
 import { eventBuffer, useEventsStore } from "@/stores/events";
 import { useCaptureStore } from "@/stores/capture";
 import { ALL_GROUPS, useTimelineStore } from "@/stores/timeline";
@@ -38,12 +41,13 @@ export function TimelineView() {
   const version = useEventsStore((s) => s.version);
   const { groups, text, flowId, window: userWindow, selectedEventId, toggleGroup, setText, setFlow, setWindow, selectEvent, resetFilters } = useTimelineStore();
   const capturing = useCaptureStore((s) => s.state === "capturing");
+  const filterAst = useUiStore((s) => s.filterAst);
 
   // Time order: events from different stages can arrive slightly out of order.
   const events = useMemo(() => {
-    const filtered = eventBuffer.rows.filter((e) => matchesFilter(e, { groups, text, flowId }));
+    const filtered = filterItems(eventBuffer.rows.filter((e) => matchesFilter(e, { groups, text, flowId })), filterAst, new EventSubject());
     return filtered.sort((a, b) => a.ts - b.ts || a.id - b.id);
-  }, [version, groups, text, flowId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, groups, text, flowId, filterAst]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bounds: Range = useMemo(() => {
     if (events.length === 0) return { start: 0, end: 1_000_000 };

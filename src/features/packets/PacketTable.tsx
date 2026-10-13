@@ -1,13 +1,14 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown } from "lucide-react";
 import { ContextMenu, EmptyState, type ContextMenuState } from "@/components/ui";
 import { formatCount } from "@/lib/format";
-import { packetBuffer, usePacketsStore } from "@/stores/packets";
+import { usePacketsStore } from "@/stores/packets";
 import { useUiStore } from "@/stores/ui";
 import type { PacketSummary } from "@/types/ipc";
 import { PACKET_COLUMNS, PacketRow, ROW_HEIGHT } from "./PacketRow";
 import { endpoint, packetToText } from "./packetText";
+import { filteredIndices, makePacketView } from "./packetView";
 
 const HEADERS = ["#", "Time", "Source", "Destination", "Protocol", "Src Port", "Dst Port", "Length", "Info"];
 const FOLLOW_THRESHOLD = ROW_HEIGHT * 2;
@@ -17,11 +18,15 @@ function copy(text: string) {
 }
 
 export function PacketTable() {
-  const count = usePacketsStore((s) => s.count);
+  const rowCount = usePacketsStore((s) => s.count);
   const selectedId = usePacketsStore((s) => s.selectedId);
   const select = usePacketsStore((s) => s.select);
   const setInspectorOpen = usePacketsStore((s) => s.setInspectorOpen);
   const applyFilter = useUiStore((s) => s.applyFilter);
+  const filterAst = useUiStore((s) => s.filterAst);
+  const filtered = useUiStore((s) => s.filter !== "");
+  const view = useMemo(() => makePacketView(filteredIndices(filterAst, rowCount), rowCount), [filterAst, rowCount]);
+  const count = view.count;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastProgrammaticTop = useRef(-1);
@@ -63,9 +68,9 @@ export function PacketTable() {
 
   const moveSelection = (delta: number) => {
     if (count === 0) return;
-    const current = selectedId === null ? -1 : packetBuffer.indexOfId(selectedId);
+    const current = selectedId === null ? -1 : view.positionOfId(selectedId);
     const next = Math.max(0, Math.min(count - 1, current === -1 ? (delta > 0 ? 0 : count - 1) : current + delta));
-    const row = packetBuffer.get(next);
+    const row = view.at(next);
     if (!row) return;
     select(row.id);
     virtualizer.scrollToIndex(next, { align: "auto" });
@@ -137,11 +142,11 @@ export function PacketTable() {
       </div>
       <div ref={scrollRef} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden outline-none" style={{ scrollbarGutter: "stable" }}>
         {count === 0 ? (
-          <EmptyState title="No packets yet" description="Start a capture on an interface or open a PCAP file to see traffic here." />
+          <EmptyState title={filtered && rowCount > 0 ? "No packets match the filter" : "No packets yet"} description={filtered && rowCount > 0 ? "Adjust or clear the filter to see more traffic." : "Start a capture on an interface or open a PCAP file to see traffic here."} />
         ) : (
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((v) => {
-              const p = packetBuffer.get(v.index);
+              const p = view.at(v.index);
               if (!p) return null;
               return <PacketRow key={p.id} packet={p} selected={p.id === selectedId} top={v.start} onSelect={select} onOpen={open} onContext={onContext} />;
             })}

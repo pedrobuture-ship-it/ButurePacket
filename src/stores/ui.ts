@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { parseFilter, type Node } from "@/lib/filter";
 
 export type ViewId = "overview" | "capture" | "packets" | "flows" | "map" | "timeline" | "dns" | "analytics" | "saved" | "settings";
 
@@ -9,6 +10,10 @@ interface UiStore {
   filterDraft: string;
   /** Filter text currently applied to every view. */
   filter: string;
+  /** Parsed form of `filter` (null = match everything). */
+  filterAst: Node | null;
+  /** Why the last attempt to apply a filter failed, if it did. */
+  filterError: string | null;
   setView: (view: ViewId) => void;
   toggleSidebar: () => void;
   setFilterDraft: (text: string) => void;
@@ -30,6 +35,8 @@ export const useUiStore = create<UiStore>((set, get) => ({
   sidebarCollapsed: readCollapsed(),
   filterDraft: "",
   filter: "",
+  filterAst: null,
+  filterError: null,
   setView: (view) => set({ view }),
   toggleSidebar: () => {
     const next = !get().sidebarCollapsed;
@@ -40,7 +47,13 @@ export const useUiStore = create<UiStore>((set, get) => ({
     }
     set({ sidebarCollapsed: next });
   },
-  setFilterDraft: (filterDraft) => set({ filterDraft }),
-  applyFilter: (text) => set((s) => ({ filter: (text ?? s.filterDraft).trim(), filterDraft: (text ?? s.filterDraft).trim() })),
-  clearFilter: () => set({ filter: "", filterDraft: "" }),
+  setFilterDraft: (filterDraft) => set({ filterDraft, filterError: null }),
+  applyFilter: (text) =>
+    set((s) => {
+      const t = (text ?? s.filterDraft).trim();
+      const r = parseFilter(t);
+      if (!r.ok) return { filterDraft: t, filterError: r.error.message };
+      return { filter: t, filterDraft: t, filterAst: r.ast, filterError: null };
+    }),
+  clearFilter: () => set({ filter: "", filterDraft: "", filterAst: null, filterError: null }),
 }));

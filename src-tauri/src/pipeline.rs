@@ -53,7 +53,7 @@ impl Pipeline {
                 events.bytes(input.ts_micros, u64::from(input.wire_len));
                 summary.flow_id = Some(id);
                 if let Some(msg) = &d.dns {
-                    dns.observe(
+                    summary.latency = dns.observe(
                         input.ts_micros,
                         input.src.ip,
                         input.src.port,
@@ -248,6 +248,9 @@ mod tests {
         let dns_flow = out.flows.iter().find(|f| f.protocol == "UDP").unwrap();
         assert!(dns_flow.domains.is_empty());
         assert_eq!(out.packets[1].application_protocol.as_deref(), Some("DNS"));
+        assert_eq!(out.packets[1].latency, Some(10_000));
+        assert_eq!(out.packets[0].domain.as_deref(), Some("api.github.com"));
+        assert_eq!(out.packets[0].latency, None);
         let kinds: Vec<_> = out.events.iter().map(|e| e.kind).collect();
         for k in [
             EventKind::DnsQuery,

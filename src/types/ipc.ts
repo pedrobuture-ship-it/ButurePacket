@@ -39,6 +39,10 @@ export interface PacketSummary {
   ttl: number | null;
   payloadLength: number;
   info: string;
+  /** Domain named in the packet itself (DNS question or TLS SNI). */
+  domain: string | null;
+  /** DNS response latency in microseconds. */
+  latency: number | null;
   issues: string[];
 }
 

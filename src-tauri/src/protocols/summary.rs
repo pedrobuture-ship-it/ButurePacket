@@ -28,6 +28,10 @@ pub struct PacketSummary {
     pub ttl: Option<u8>,
     pub payload_length: u32,
     pub info: String,
+    /// Domain named in this packet itself (DNS question, TLS SNI).
+    pub domain: Option<String>,
+    /// DNS response latency in microseconds, once matched with its query.
+    pub latency: Option<i64>,
     /// Non-fatal problems: truncation, malformed headers, fragmentation.
     pub issues: Vec<String>,
 }
@@ -128,8 +132,23 @@ pub fn summarize_dissection(packet: &RawPacket, d: &Dissection) -> PacketSummary
         ttl,
         payload_length: u32::try_from(d.payload_len).unwrap_or(u32::MAX),
         info: info_text(d),
+        domain: packet_domain(d),
+        latency: None,
         issues,
     }
+}
+
+fn packet_domain(d: &Dissection) -> Option<String> {
+    d.dns
+        .as_ref()
+        .and_then(|m| m.questions.first())
+        .map(|q| q.name.clone())
+        .or_else(|| {
+            d.tls
+                .as_ref()
+                .and_then(|t| t.client_hello.as_ref())
+                .and_then(|h| h.sni.clone())
+        })
 }
 
 fn info_text(d: &Dissection) -> String {

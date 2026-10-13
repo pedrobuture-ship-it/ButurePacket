@@ -186,6 +186,7 @@ impl DnsTracker {
         }
     }
 
+    /// Records one DNS message. For a response that matches a captured query, returns the latency.
     #[allow(clippy::too_many_arguments)]
     pub fn observe(
         &mut self,
@@ -196,16 +197,18 @@ impl DnsTracker {
         dport: u16,
         flow_id: Option<u64>,
         msg: &Dns,
-    ) {
+    ) -> Option<i64> {
         self.last_ts = self.last_ts.max(ts);
+        let mut latency = None;
         if !msg.is_response {
             self.on_query(ts, src, sport, dst, flow_id, msg);
         } else {
-            self.on_response(ts, src, dst, dport, flow_id, msg);
+            latency = self.on_response(ts, src, dst, dport, flow_id, msg);
         }
         if ts - self.last_sweep >= SWEEP_INTERVAL_MICROS {
             self.sweep(ts);
         }
+        latency
     }
 
     fn on_query(
@@ -261,7 +264,7 @@ impl DnsTracker {
         cport: u16,
         flow_id: Option<u64>,
         msg: &Dns,
-    ) {
+    ) -> Option<i64> {
         let answers: Vec<DnsAnswer> = msg
             .answers
             .iter()
@@ -347,6 +350,7 @@ impl DnsTracker {
                 }
             }
         }
+        latency
     }
 
     fn learn(&mut self, ip: IpAddr, domain: &str, ts: i64) {

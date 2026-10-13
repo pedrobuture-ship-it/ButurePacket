@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { Badge, EmptyState, Input, Metric, Tabs, VirtualTable, type BadgeTone, type VColumn } from "@/components/ui";
 import { formatCount, formatLatency, formatTimestamp } from "@/lib/format";
+import { DnsSubject } from "@/lib/filter/adapters";
+import { filterItems } from "@/lib/filter/apply";
+import { useUiStore } from "@/stores/ui";
 import { dnsBuffer, useDnsStore } from "@/stores/dns";
 import type { DnsStatus, DnsTransaction, ResolverStat } from "@/types/ipc";
 import { type DomainRow, aggregateDomains, answersText } from "./aggregate";
@@ -45,13 +48,14 @@ export function DnsView() {
   const stats = useDnsStore((s) => s.stats);
   const [tab, setTab] = useState<Tab>("queries");
   const [search, setSearch] = useState("");
+  const filterAst = useUiStore((s) => s.filterAst);
 
   // Newest first; the filter box matches the query name.
   const transactions = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    const all = [...dnsBuffer.byId.values()].sort((a, b) => b.id - a.id);
+    const all = filterItems([...dnsBuffer.byId.values()], filterAst, new DnsSubject()).sort((a, b) => b.id - a.id);
     return needle ? all.filter((t) => t.queryName.toLowerCase().includes(needle)) : all;
-  }, [version, search]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [version, search, filterAst]); // eslint-disable-line react-hooks/exhaustive-deps
   const domains = useMemo(() => aggregateDomains(transactions), [transactions]);
 
   const empty = <EmptyState title="No DNS traffic" description="DNS queries and responses on port 53 appear here as they are captured." />;

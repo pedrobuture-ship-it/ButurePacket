@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { Network } from "lucide-react";
 import { EmptyState, ResizablePanel, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { FlowSubject } from "@/lib/filter/adapters";
+import { filterItems } from "@/lib/filter/apply";
+import { useUiStore } from "@/stores/ui";
 import { flowProtocolLabel } from "@/features/flows/flowText";
 import { flowBuffer, useFlowsStore } from "@/stores/flows";
 import { useCaptureStore } from "@/stores/capture";
@@ -34,12 +37,13 @@ export function TopologyView() {
   const [protocol, setProtocol] = useState("");
   const [threshold, setThreshold] = useState("0");
   const [selection, setSelection] = useState<Selection | null>(null);
+  const filterAst = useUiStore((s) => s.filterAst);
 
   const localIps = useMemo(() => new Set(interfaces.find((i) => i.name === selectedInterface)?.addresses ?? []), [interfaces, selectedInterface]);
   const protocols = useMemo(() => [...new Set([...flowBuffer.byId.values()].map(flowProtocolLabel))].sort(), [version]); // eslint-disable-line react-hooks/exhaustive-deps
   const graph = useMemo(
-    () => buildGraph(flowBuffer.byId.values(), { ...DEFAULT_OPTIONS, localIps, localOnly: scope === "local", remoteOnly: scope === "remote", protocol: protocol || null, minBytes: Number(threshold) }),
-    [version, localIps, scope, protocol, threshold], // eslint-disable-line react-hooks/exhaustive-deps
+    () => buildGraph(filterItems(flowBuffer.byId.values(), filterAst, new FlowSubject()), { ...DEFAULT_OPTIONS, localIps, localOnly: scope === "local", remoteOnly: scope === "remote", protocol: protocol || null, minBytes: Number(threshold) }),
+    [version, localIps, scope, protocol, threshold, filterAst], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const node = selection?.type === "node" ? graph.nodes.find((n) => n.id === selection.id) : undefined;

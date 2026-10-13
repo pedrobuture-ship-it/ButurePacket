@@ -21,6 +21,8 @@ const base: PacketSummary = {
   ttl: 64,
   payloadLength: 32,
   info: "55321 → 53 Len=32",
+  domain: null,
+  latency: null,
   issues: [],
 };
 

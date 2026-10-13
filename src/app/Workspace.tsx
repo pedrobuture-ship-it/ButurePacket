@@ -22,7 +22,7 @@ const titles: Record<ViewId, string> = {
 };
 
 /** Views that depend on the global filter show the filter bar. */
-const filterable: ViewId[] = ["packets", "flows"];
+const filterable: ViewId[] = ["packets", "flows", "dns", "timeline", "map"];
 
 export function Workspace() {
   const view = useUiStore((s) => s.view);

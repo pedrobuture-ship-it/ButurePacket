@@ -21,6 +21,8 @@ const row = (id: number): PacketSummary => ({
   ttl: null,
   payloadLength: 0,
   info: "",
+  domain: null,
+  latency: null,
   issues: [],
 });
 
