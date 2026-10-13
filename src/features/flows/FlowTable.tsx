@@ -1,10 +1,12 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Badge, EmptyState } from "@/components/ui";
+import { Badge, ContextMenu, EmptyState, type ContextMenuState } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatCount, formatLatency, formatSpan } from "@/lib/format";
 import { protocolTone } from "@/lib/protocolColors";
 import type { FlowView } from "@/types/ipc";
+import { useTimelineStore } from "@/stores/timeline";
+import { useUiStore } from "@/stores/ui";
 import { endpointText, flowProtocolLabel } from "./flowText";
 
 const ROW = 26;
@@ -19,6 +21,38 @@ interface Props {
 
 export function FlowTable({ flows, selectedId, onSelect }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const applyFilter = useUiStore((s) => s.applyFilter);
+  const setView = useUiStore((s) => s.setView);
+  const setTimelineFlow = useTimelineStore((s) => s.setFlow);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
+
+  const openMenu = (e: React.MouseEvent, f: FlowView) => {
+    e.preventDefault();
+    onSelect(f.id);
+    const domain = f.tls?.sni ?? f.domains[0];
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { id: "copy-src", label: "Copy source", onSelect: () => copy(endpointText(f.endpointA, true)) },
+        { id: "copy-dst", label: "Copy destination", onSelect: () => copy(endpointText(f.endpointB, true)) },
+        { id: "copy-domain", label: "Copy domain", disabled: !domain, onSelect: () => domain && copy(domain) },
+        { id: "s1", label: "", separator: true },
+        { id: "f-host", label: "Filter by destination host", onSelect: () => applyFilter(`ip = ${f.endpointB.ip}`) },
+        { id: "f-domain", label: "Filter by domain", disabled: !domain, onSelect: () => domain && applyFilter(`domain = "${domain}"`) },
+        { id: "s2", label: "", separator: true },
+        {
+          id: "timeline",
+          label: "Show in Timeline",
+          onSelect: () => {
+            setTimelineFlow(f.id);
+            setView("timeline");
+          },
+        },
+      ],
+    });
+  };
   const virtualizer = useVirtualizer({ count: flows.length, getScrollElement: () => ref.current, estimateSize: () => ROW, overscan: 16 });
   const selectedIndex = useMemo(() => flows.findIndex((f) => f.id === selectedId), [flows, selectedId]);
 
@@ -54,6 +88,7 @@ export function FlowTable({ flows, selectedId, onSelect }: Props) {
                   role="row"
                   aria-selected={selected}
                   onClick={() => onSelect(f.id)}
+                  onContextMenu={(e) => openMenu(e, f)}
                   className={cn("absolute left-0 grid w-full items-center border-b border-line/40 px-2 font-mono text-xs", selected ? "bg-primary-muted/40" : "hover:bg-hover")}
                   style={{ height: ROW, transform: `translateY(${v.start}px)`, gridTemplateColumns: COLS }}
                 >
@@ -75,6 +110,7 @@ export function FlowTable({ flows, selectedId, onSelect }: Props) {
           </div>
         )}
       </div>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   );
 }

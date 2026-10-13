@@ -18,12 +18,13 @@ interface Props<T> {
   rowHeight?: number;
   selectedKey?: string | number | null;
   onSelect?: (row: T) => void;
+  onContextMenu?: (event: React.MouseEvent, row: T) => void;
   empty?: ReactNode;
   label: string;
 }
 
 /** Generic virtualized table for large, read-mostly lists. */
-export function VirtualTable<T>({ columns, rows, rowKey, rowHeight = 26, selectedKey, onSelect, empty, label }: Props<T>) {
+export function VirtualTable<T>({ columns, rows, rowKey, rowHeight = 26, selectedKey, onSelect, onContextMenu, empty, label }: Props<T>) {
   const ref = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => ref.current, estimateSize: () => rowHeight, overscan: 16 });
   const template = columns.map((c) => c.width).join(" ");
@@ -50,6 +51,7 @@ export function VirtualTable<T>({ columns, rows, rowKey, rowHeight = 26, selecte
                   role="row"
                   aria-selected={key === selectedKey}
                   onClick={() => onSelect?.(row)}
+                  onContextMenu={onContextMenu ? (e) => onContextMenu(e, row) : undefined}
                   className={cn("absolute left-0 grid w-full items-center border-b border-line/40 px-2 text-xs", key === selectedKey ? "bg-primary-muted/40" : "hover:bg-hover")}
                   style={{ height: rowHeight, transform: `translateY(${v.start}px)`, gridTemplateColumns: template }}
                 >

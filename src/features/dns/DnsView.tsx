@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Badge, EmptyState, Input, Metric, Tabs, VirtualTable, type BadgeTone, type VColumn } from "@/components/ui";
+import { Badge, ContextMenu, EmptyState, Input, Metric, Tabs, VirtualTable, type BadgeTone, type ContextMenuState, type VColumn } from "@/components/ui";
 import { formatCount, formatLatency, formatTimestamp } from "@/lib/format";
 import { DnsSubject } from "@/lib/filter/adapters";
 import { filterItems } from "@/lib/filter/apply";
@@ -49,6 +49,8 @@ export function DnsView() {
   const [tab, setTab] = useState<Tab>("queries");
   const [search, setSearch] = useState("");
   const filterAst = useUiStore((s) => s.filterAst);
+  const applyFilter = useUiStore((s) => s.applyFilter);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
 
   // Newest first; the filter box matches the query name.
   const transactions = useMemo(() => {
@@ -73,10 +75,33 @@ export function DnsView() {
       </div>
       <Tabs tabs={TABS} value={tab} onChange={setTab} className="shrink-0 px-2" />
       <div className="min-h-0 flex-1">
-        {tab === "queries" && <VirtualTable label="DNS queries" columns={queryColumns} rows={transactions} rowKey={(t) => t.id} empty={empty} />}
+        {tab === "queries" && (
+          <VirtualTable
+            label="DNS queries"
+            columns={queryColumns}
+            rows={transactions}
+            rowKey={(t) => t.id}
+            empty={empty}
+            onContextMenu={(e, t) => {
+              e.preventDefault();
+              setMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: [
+                  { id: "name", label: "Copy name", onSelect: () => void navigator.clipboard?.writeText(t.queryName).catch(() => undefined) },
+                  { id: "answers", label: "Copy answers", disabled: t.answers.length === 0, onSelect: () => void navigator.clipboard?.writeText(answersText(t, 50)).catch(() => undefined) },
+                  { id: "sep", label: "", separator: true },
+                  { id: "fd", label: "Filter by this domain", onSelect: () => applyFilter(`domain = "${t.queryName}"`) },
+                  { id: "fr", label: "Filter by resolver", onSelect: () => applyFilter(`resolver = ${t.resolver}`) },
+                ],
+              });
+            }}
+          />
+        )}
         {tab === "domains" && <VirtualTable label="DNS domains" columns={domainColumns} rows={domains} rowKey={(d) => d.domain} empty={empty} />}
         {tab === "resolvers" && <VirtualTable label="DNS resolvers" columns={resolverColumns} rows={stats.resolvers} rowKey={(r) => r.ip} empty={empty} />}
       </div>
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   );
 }
