@@ -52,13 +52,13 @@ describe("buildGraph", () => {
     expect(ips(buildGraph(flows, opts({ protocol: "DNS" })))).toEqual(["1.1.1.1", "192.168.1.20"]);
   });
 
-  it("adds domain nodes from SNI first, then likely DNS names, linked to the host", () => {
+  it("labels a host with its SNI, then links further names as domain nodes", () => {
     const g = buildGraph([flow(1, "140.82.121.4", { tls: { version: "TLS 1.3", sni: "github.com", alpnOffered: [], alpnSelected: null, cipherSuite: null, certificate: null, clientHelloAt: 1, serverHelloAt: 2, handshakeEncrypted: true }, domains: ["api.github.com"] })], opts());
     const host = g.nodes.find((n) => n.ip === "140.82.121.4")!;
     expect(host.domains).toEqual(["github.com", "api.github.com"]);
     expect(host.label).toBe("github.com");
     const dn = g.nodes.find((n) => n.kind === "domain")!;
-    expect(dn.id).toBe("domain:github.com");
+    expect(dn.id).toBe("domain:api.github.com"); // the SNI is already the host label
     expect(g.edges.some((e) => e.kind === "domain" && e.source === dn.id && e.target === host.id)).toBe(true);
   });
 

@@ -210,11 +210,12 @@ export function buildGraph(flows: Iterable<FlowView>, options: GraphOptions): Gr
     });
   }
 
-  // 7. Domain nodes for the busiest remote hosts that have a known name.
-  const named = nodes.filter((n) => n.kind === "remote" && n.domains.length > 0).sort((a, b) => b.bytes - a.bytes).slice(0, MAX_DOMAIN_NODES);
+  // 7. Domain nodes for names beyond the one already used as the host's label (the first, i.e. TLS SNI
+  //    when known). Hosts with a single name just carry it as their label.
+  const named = nodes.filter((n) => n.kind === "remote" && n.domains.length > 1).sort((a, b) => b.bytes - a.bytes).slice(0, MAX_DOMAIN_NODES);
   const domainNodes = new Map<string, GraphNode>();
   for (const n of named) {
-    const d = n.domains[0].toLowerCase();
+    const d = n.domains[1].toLowerCase();
     const id = `domain:${d}`;
     if (!domainNodes.has(id)) domainNodes.set(id, { id, kind: "domain", label: d, bytes: 0, flows: 0, firstSeen: n.firstSeen, lastSeen: n.lastSeen, domains: [d], size: 14 });
     const dn = domainNodes.get(id)!;

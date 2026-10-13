@@ -36,6 +36,7 @@ const STYLE: StylesheetJson = [
 const LEVEL: Record<NodeKind, number> = { this: 4, local: 3, remote: 2, cluster: 1, domain: 0 };
 const ACTIVE_WINDOW_MICROS = 2_000_000;
 const LAYOUT_MIN_INTERVAL_MS = 1500;
+const MAX_FIT_ZOOM = 1.25;
 
 function toElements(graph: Graph): ElementDefinition[] {
   const maxBytes = Math.max(1, ...graph.edges.map((e) => e.bytes));
@@ -95,7 +96,13 @@ export function MapCanvas({ graph, selected, onSelect }: Props) {
     // Keep the canvas in sync with its container (panel resizes, first layout pass).
     const observer = new ResizeObserver(() => {
       cy.resize();
-      if (!userMoved.current) cy.fit(undefined, 36);
+      if (!userMoved.current) {
+        cy.fit(undefined, 36);
+        if (cy.zoom() > MAX_FIT_ZOOM) {
+          cy.zoom(MAX_FIT_ZOOM);
+          cy.center();
+        }
+      }
     });
     if (host.current) observer.observe(host.current);
     cy.on("zoom pan", () => {
@@ -137,7 +144,14 @@ export function MapCanvas({ graph, selected, onSelect }: Props) {
       cy.resize();
       cy.layout({ name: "concentric", concentric: (n) => LEVEL[n.data("kind") as NodeKind] ?? 0, levelWidth: () => 1, minNodeSpacing: 28, animate: false, fit: !userMoved.current, padding: 36 }).run();
       placeDomainsNextToHosts(cy);
-      if (first || !userMoved.current) cy.fit(undefined, 36);
+      if (first || !userMoved.current) {
+        cy.fit(undefined, 36);
+        // A handful of nodes would otherwise be blown up to fill the whole canvas.
+        if (cy.zoom() > MAX_FIT_ZOOM) {
+          cy.zoom(MAX_FIT_ZOOM);
+          cy.center();
+        }
+      }
       cy.scratch("_fitting", false);
     }
   }, [graph]);

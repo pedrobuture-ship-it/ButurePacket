@@ -26,9 +26,9 @@ cargo run --release --features testgen --example gen_pcap -- 1000000 /tmp/synthe
 npm run perf
 ```
 
-A browser harness streaming 5,000-row batches every 50 ms (≈100k packets/s) into the packet table
-while sampling frame times and long tasks lives in the project history (`perfui`); the results are
-in the table below.
+A browser harness (`scripts/ui-harness/perfui.mjs`, see its README) streams 5,000-row batches every
+50 ms (≈100k packets/s) into the packet table while sampling frame times and long tasks; the results
+are in the table below.
 
 ## Findings
 
