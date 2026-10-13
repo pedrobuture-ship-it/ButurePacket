@@ -1,5 +1,6 @@
 import { FilterBar } from "@/app/FilterBar";
 import { EmptyState } from "@/components/ui";
+import { AnalyticsView } from "@/features/analytics/AnalyticsView";
 import { DnsView } from "@/features/dns/DnsView";
 import { FlowsView } from "@/features/flows/FlowsView";
 import { TimelineView } from "@/features/timeline/TimelineView";
@@ -39,6 +40,8 @@ export function Workspace() {
           <TopologyView />
         ) : view === "timeline" ? (
           <TimelineView />
+        ) : view === "analytics" ? (
+          <AnalyticsView />
         ) : (
           <EmptyState title={titles[view]} description="Nothing captured yet. Start a capture or open a PCAP file." />
         )}

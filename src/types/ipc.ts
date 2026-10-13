@@ -199,3 +199,56 @@ export interface TimelineEvent {
   title: string;
   detail: string | null;
 }
+
+export interface MetricBucket {
+  /** Unix second. */
+  sec: number;
+  packets: number;
+  bytes: number;
+  newFlows: number;
+  activeFlows: number;
+  retransmissions: number;
+  resets: number;
+  duplicateAcks: number;
+  zeroWindows: number;
+}
+
+export interface TcpTotals {
+  packets: number;
+  retransmissions: number;
+  resets: number;
+  duplicateAcks: number;
+  zeroWindows: number;
+}
+
+export interface RankEntry {
+  key: string;
+  bytes: number;
+  packets: number;
+  flows: number;
+}
+
+export interface Rankings {
+  hosts: RankEntry[];
+  domains: RankEntry[];
+  protocols: RankEntry[];
+  ports: RankEntry[];
+  talkers: RankEntry[];
+}
+
+export type ProblemLabel = "potentialIssue" | "unusual" | "worthInvestigating";
+
+export interface Problem {
+  id: string;
+  label: ProblemLabel;
+  title: string;
+  detail: string;
+}
+
+export interface AnalyticsSnapshot {
+  series: MetricBucket[];
+  tcp: TcpTotals;
+  dns: DnsStats;
+  rankings: Rankings;
+  problems: Problem[];
+}

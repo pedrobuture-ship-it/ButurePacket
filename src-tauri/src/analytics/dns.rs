@@ -461,6 +461,22 @@ impl DnsTracker {
         Some(self.stats())
     }
 
+    /// Domains whose lookups failed or timed out, with how many times, most frequent first.
+    pub fn failed_domains(&self) -> Vec<(String, u32)> {
+        let mut counts: HashMap<&str, u32> = HashMap::new();
+        for t in &self.transactions {
+            if matches!(t.status(), DnsStatus::Failed | DnsStatus::Timeout) {
+                *counts.entry(t.name.as_str()).or_default() += 1;
+            }
+        }
+        let mut v: Vec<(String, u32)> = counts
+            .into_iter()
+            .map(|(k, n)| (k.to_string(), n))
+            .collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v
+    }
+
     pub fn snapshot(&self) -> Vec<DnsTransactionView> {
         self.transactions.iter().map(Self::view).collect()
     }

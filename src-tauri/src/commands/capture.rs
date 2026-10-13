@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -13,6 +14,8 @@ use crate::capture::{
 use crate::flows::FlowView;
 use crate::pipeline::Pipeline;
 use crate::protocols::{PacketDetail, build_detail};
+
+const ANALYTICS_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Default)]
 pub struct CaptureState {
@@ -37,6 +40,7 @@ struct DnsPayload {
 struct TauriSink {
     app: AppHandle,
     pipeline: Arc<Pipeline>,
+    last_analytics: Mutex<Instant>,
 }
 
 impl CaptureSink for TauriSink {
@@ -65,6 +69,14 @@ impl CaptureSink for TauriSink {
 
     fn on_stats(&self, stats: &StatsSnapshot) {
         let _ = self.app.emit("capture://stats", stats);
+        // Analytics are recomputed at most once a second: they scan the flow table.
+        let mut last = self.last_analytics.lock().unwrap();
+        if last.elapsed() >= ANALYTICS_INTERVAL {
+            *last = Instant::now();
+            let _ = self
+                .app
+                .emit("capture://analytics", self.pipeline.analytics());
+        }
     }
 
     fn on_state(&self, state: SessionState, error: Option<&CaptureError>) {
@@ -103,6 +115,7 @@ pub fn capture_start(
     let sink = TauriSink {
         app,
         pipeline: state.pipeline.clone(),
+        last_analytics: Mutex::new(Instant::now()),
     };
     *slot = Some(CaptureSession::start(
         Box::new(source),
@@ -196,4 +209,11 @@ pub fn get_dns(state: State<'_, CaptureState>) -> DnsSnapshot {
 #[tauri::command]
 pub fn get_events(state: State<'_, CaptureState>) -> Vec<TimelineEvent> {
     state.pipeline.events.lock().unwrap().snapshot()
+}
+
+#[tauri::command]
+pub fn get_analytics(
+    state: State<'_, CaptureState>,
+) -> crate::analytics::metrics::AnalyticsSnapshot {
+    state.pipeline.analytics()
 }

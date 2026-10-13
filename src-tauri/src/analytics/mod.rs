@@ -2,4 +2,5 @@
 
 pub mod dns;
 pub mod events;
+pub mod metrics;
 pub mod tls;

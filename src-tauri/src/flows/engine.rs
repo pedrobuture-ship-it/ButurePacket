@@ -104,6 +104,8 @@ pub struct Observed {
     pub state_before: Option<TcpState>,
     pub retransmissions_before: u64,
     pub resets_before: u64,
+    pub duplicate_acks_before: u64,
+    pub zero_windows_before: u64,
 }
 
 /// Tracks every conversation seen so far. `observe` is O(1) per packet.
@@ -164,11 +166,15 @@ impl FlowEngine {
             state_before: None,
             retransmissions_before: 0,
             resets_before: 0,
+            duplicate_acks_before: 0,
+            zero_windows_before: 0,
         };
         if let Some(flow) = self.flows.get_mut(&id) {
             observed.state_before = flow.tcp_state;
             observed.retransmissions_before = flow.retransmissions;
             observed.resets_before = flow.resets;
+            observed.duplicate_acks_before = flow.duplicate_acks;
+            observed.zero_windows_before = flow.zero_windows;
             flow.update(input);
         }
         self.dirty.insert(id);
@@ -241,6 +247,10 @@ impl FlowEngine {
             .filter_map(|id| self.flows.get(id))
             .map(FlowView::of)
             .collect()
+    }
+
+    pub fn snapshot_flows(&self) -> impl Iterator<Item = &Flow> {
+        self.flows.values()
     }
 
     pub fn snapshot(&self) -> Vec<FlowView> {

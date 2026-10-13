@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 use crate::analytics::dns::{DnsStats, DnsTracker, DnsTransactionView};
 use crate::analytics::events::{EventEngine, TimelineEvent};
+use crate::analytics::metrics::{AnalyticsSnapshot, MetricsEngine};
 use crate::analytics::tls::TlsTracker;
 use crate::capture::RawPacket;
 use crate::flows::{Direction, FlowEngine, FlowInput, FlowView, Proto};
@@ -30,6 +31,7 @@ pub struct Pipeline {
     pub dns: Mutex<DnsTracker>,
     pub tls: Mutex<TlsTracker>,
     pub events: Mutex<EventEngine>,
+    pub metrics: Mutex<MetricsEngine>,
 }
 
 impl Pipeline {
@@ -39,11 +41,14 @@ impl Pipeline {
         let mut dns = self.dns.lock().unwrap();
         let mut tls = self.tls.lock().unwrap();
         let mut events = self.events.lock().unwrap();
+        let mut metrics = self.metrics.lock().unwrap();
         for raw in &batch {
             let d = dissect(&raw.data);
             let mut summary = summarize_dissection(raw, &d);
+            let mut observed = None;
             if let Some(input) = FlowInput::from_dissection(raw, &d) {
                 let obs = flows.observe_detailed(&input);
+                observed = Some(obs);
                 let id = obs.id;
                 events.bytes(input.ts_micros, u64::from(input.wire_len));
                 summary.flow_id = Some(id);
@@ -81,6 +86,13 @@ impl Pipeline {
                     attach_likely_domains(&mut flows, &dns, id, input.ts_micros);
                 }
             }
+            metrics.observe(
+                raw.ts_micros,
+                raw.original_len.max(raw.captured_len),
+                observed
+                    .as_ref()
+                    .and_then(|o| flows.get(o.id).map(|f| (o, f))),
+            );
             packets.push(summary);
         }
         let changed = flows.take_changed();
@@ -89,7 +101,7 @@ impl Pipeline {
         events.dns_changed(&dns_changed);
         let mut new_events = events.take_new();
         new_events.truncate(MAX_EVENTS_PER_BATCH);
-        drop((flows, dns, tls, events));
+        drop((flows, dns, tls, events, metrics));
         let mut store = self.store.lock().unwrap();
         for raw in batch {
             store.push(raw);
@@ -103,12 +115,21 @@ impl Pipeline {
         }
     }
 
+    /// Rolling metrics, rankings and potential problems for the Analytics screen.
+    pub fn analytics(&self) -> AnalyticsSnapshot {
+        let flows = self.flows.lock().unwrap();
+        let dns = self.dns.lock().unwrap();
+        let metrics = self.metrics.lock().unwrap();
+        metrics.snapshot(flows.snapshot_flows(), dns.stats(), &dns.failed_domains())
+    }
+
     pub fn clear(&self) {
         self.store.lock().unwrap().clear();
         self.flows.lock().unwrap().clear();
         self.dns.lock().unwrap().clear();
         self.tls.lock().unwrap().clear();
         self.events.lock().unwrap().clear();
+        self.metrics.lock().unwrap().clear();
     }
 }
 
