@@ -45,6 +45,20 @@ impl PacketStore {
         self.packets.get(idx).filter(|p| p.id == id)
     }
 
+    /// Id of the oldest packet still held, if any.
+    pub fn first_id(&self) -> Option<u64> {
+        self.packets.front().map(|p| p.id)
+    }
+
+    /// Up to `max` packets with id >= `from_id`, oldest first (cloned so the lock can be released).
+    pub fn chunk(&self, from_id: u64, max: usize) -> Vec<RawPacket> {
+        let Some(first) = self.first_id() else {
+            return Vec::new();
+        };
+        let start = usize::try_from(from_id.saturating_sub(first)).unwrap_or(usize::MAX);
+        self.packets.iter().skip(start).take(max).cloned().collect()
+    }
+
     pub fn len(&self) -> usize {
         self.packets.len()
     }
@@ -79,6 +93,23 @@ mod tests {
         (1..=10).for_each(|i| s.push(pkt(i, 10)));
         assert_eq!(s.get(5).unwrap().data[0], 5);
         assert!(s.get(0).is_none() && s.get(11).is_none());
+    }
+
+    #[test]
+    fn chunks_start_at_the_requested_id() {
+        let mut s = PacketStore::default();
+        (5..=14).for_each(|i| s.push(pkt(i, 4)));
+        assert_eq!(s.first_id(), Some(5));
+        assert_eq!(
+            s.chunk(0, 3).iter().map(|p| p.id).collect::<Vec<_>>(),
+            vec![5, 6, 7]
+        );
+        assert_eq!(
+            s.chunk(9, 100).iter().map(|p| p.id).collect::<Vec<_>>(),
+            vec![9, 10, 11, 12, 13, 14]
+        );
+        assert!(s.chunk(99, 5).is_empty());
+        assert!(PacketStore::default().chunk(1, 5).is_empty());
     }
 
     #[test]

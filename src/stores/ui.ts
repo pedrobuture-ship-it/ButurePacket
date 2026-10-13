@@ -6,6 +6,8 @@ export type ViewId = "overview" | "capture" | "packets" | "flows" | "map" | "tim
 interface UiStore {
   view: ViewId;
   sidebarCollapsed: boolean;
+  /** A file is being dragged over the window. */
+  dragging: boolean;
   /** Text typed in the global filter bar. */
   filterDraft: string;
   /** Filter text currently applied to every view. */
@@ -16,6 +18,7 @@ interface UiStore {
   filterError: string | null;
   setView: (view: ViewId) => void;
   toggleSidebar: () => void;
+  setDragging: (dragging: boolean) => void;
   setFilterDraft: (text: string) => void;
   applyFilter: (text?: string) => void;
   clearFilter: () => void;
@@ -33,11 +36,13 @@ const readCollapsed = () => {
 export const useUiStore = create<UiStore>((set, get) => ({
   view: "packets",
   sidebarCollapsed: readCollapsed(),
+  dragging: false,
   filterDraft: "",
   filter: "",
   filterAst: null,
   filterError: null,
   setView: (view) => set({ view }),
+  setDragging: (dragging) => set({ dragging }),
   toggleSidebar: () => {
     const next = !get().sidebarCollapsed;
     try {

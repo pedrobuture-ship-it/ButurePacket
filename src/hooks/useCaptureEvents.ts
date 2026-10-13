@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { api, errorMessage, isIpcError, on } from "@/lib/api";
 import { useCaptureStore } from "@/stores/capture";
+import { formatCount } from "@/lib/format";
+import { useNoticeStore } from "@/stores/notices";
 import { useAnalyticsStore } from "@/stores/analytics";
 import { useDnsStore } from "@/stores/dns";
 import { useEventsStore } from "@/stores/events";
@@ -23,6 +25,26 @@ export function useCaptureEvents() {
     const store = useCaptureStore.getState();
     const unlisten: Promise<() => void>[] = [
       on("capture://stats", (s) => store.applyStats(s)),
+      on("capture://progress", (p) => {
+        const notify = useNoticeStore.getState().push;
+        if (!p.done) {
+          store.setState("processing");
+          store.setOpenProgress(p);
+          return;
+        }
+        store.setOpenProgress(null);
+        if (p.error) {
+          store.setMode("live");
+          store.setState("idle");
+          notify("error", p.error.message);
+          return;
+        }
+        store.setState("idle");
+        if (p.cancelled) notify("info", "Opening was cancelled. Showing what was read so far.");
+        if (p.truncatedTail) notify("warning", "The file ends in the middle of a packet. Everything before that was loaded.");
+        if (p.skipped > 0) notify("warning", `${formatCount(p.skipped)} packets were skipped (unsupported or inconsistent).`);
+        if (p.rowsTruncated) notify("warning", "Large capture: the packet list shows the first 1,000,000 packets. Flows, DNS, timeline and analytics cover the whole file.");
+      }),
       on("capture://analytics", (a) => useAnalyticsStore.getState().set(a)),
       on("capture://events", (evs) => useEventsStore.getState().append(evs)),
       on("capture://dns", (p) => useDnsStore.getState().apply(p)),

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AnalyticsSnapshot, AppInfo, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
+import type { AnalyticsSnapshot, AppInfo, OpenProgress, SaveResult, DnsPayload, DnsStats, DnsTransaction, FlowView, IpcError, PacketDetail, PacketSummary, StatePayload, TimelineEvent } from "@/types/ipc";
 import type { CaptureStats, InterfaceInfo } from "@/types/capture";
 
 /** Every backend command is declared here: name → [args, result]. */
@@ -17,6 +17,9 @@ interface Commands {
   get_flows: [Record<string, never>, FlowView[]];
   get_events: [Record<string, never>, TimelineEvent[]];
   get_analytics: [Record<string, never>, AnalyticsSnapshot];
+  open_capture: [{ path: string }, void];
+  cancel_open: [Record<string, never>, void];
+  save_capture: [{ path: string }, SaveResult];
   get_dns: [Record<string, never>, { transactions: DnsTransaction[]; stats: DnsStats }];
 }
 
@@ -29,6 +32,7 @@ interface Events {
   "capture://dns": DnsPayload;
   "capture://events": TimelineEvent[];
   "capture://analytics": AnalyticsSnapshot;
+  "capture://progress": OpenProgress;
 }
 
 export function isIpcError(e: unknown): e is IpcError {
@@ -66,6 +70,9 @@ export const api = {
   captureStop: () => call("capture_stop", {}),
   getPacketBytes: (id: number) => call("get_packet_bytes", { id }),
   getDns: () => call("get_dns", {}),
+  openCapture: (path: string) => call("open_capture", { path }),
+  cancelOpen: () => call("cancel_open", {}),
+  saveCapture: (path: string) => call("save_capture", { path }),
   getAnalytics: () => call("get_analytics", {}),
   getEvents: () => call("get_events", {}),
   getFlows: () => call("get_flows", {}),

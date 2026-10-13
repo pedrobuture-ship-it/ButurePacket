@@ -1,7 +1,10 @@
 //! Live capture: libpcap source → bounded buffer → timed batches → sink.
 
 pub mod error;
+pub mod file;
 pub mod interfaces;
+pub mod linktype;
+pub mod offline;
 pub mod packet;
 pub mod session;
 pub mod source;

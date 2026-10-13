@@ -2,6 +2,7 @@
 
 pub mod capture;
 pub mod error;
+pub mod files;
 
 use serde::Serialize;
 

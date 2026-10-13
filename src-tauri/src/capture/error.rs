@@ -12,6 +12,14 @@ pub enum CaptureError {
     NotRunning,
     #[error("Capture backend error: {0}")]
     Backend(String),
+    #[error("This file is not a readable capture: {0}")]
+    InvalidFile(String),
+    #[error("File error: {0}")]
+    Io(String),
+    #[error("The operation was cancelled.")]
+    Cancelled,
+    #[error("{0}")]
+    Busy(String),
     /// Finite sources (tests, offline files) report their end this way. Not a failure.
     #[error("End of packet stream.")]
     EndOfStream,
@@ -40,7 +48,17 @@ impl CaptureError {
             CaptureError::AlreadyRunning => "alreadyRunning",
             CaptureError::NotRunning => "notRunning",
             CaptureError::Backend(_) => "backend",
+            CaptureError::InvalidFile(_) => "invalidCaptureFile",
+            CaptureError::Io(_) => "io",
+            CaptureError::Cancelled => "cancelled",
+            CaptureError::Busy(_) => "busy",
             CaptureError::EndOfStream => "endOfStream",
         }
+    }
+}
+
+impl From<std::io::Error> for CaptureError {
+    fn from(e: std::io::Error) -> Self {
+        CaptureError::Io(e.to_string())
     }
 }

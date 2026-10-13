@@ -309,4 +309,164 @@ mod tests {
         assert!(p.store.lock().unwrap().is_empty());
         assert!(p.flows.lock().unwrap().is_empty());
     }
+
+    /// A realistic capture file (DNS lookup, TCP handshake, TLS hello, close) read from disk
+    /// and pushed through the same path the UI uses.
+    #[test]
+    fn capture_file_end_to_end() {
+        use crate::capture::file::write_pcap;
+        use crate::capture::offline::{self, OfflineSink, Progress};
+        use crate::protocols::dns::tests::{query, response};
+        use crate::protocols::tls::tests::{client_hello, server_hello};
+        use std::sync::atomic::AtomicBool;
+
+        let client = [192, 168, 1, 20];
+        let resolver = [8, 8, 8, 8];
+        let server = [140, 82, 121, 4];
+        let mut frames: Vec<(i64, Vec<u8>)> = vec![];
+        let eth = || PacketBuilder::ethernet2([1; 6], [2; 6]);
+        let mut add =
+            |ts_ms: i64, data: Vec<u8>| frames.push((1_700_000_000_000_000 + ts_ms * 1000, data));
+        let udp = |src: [u8; 4], dst: [u8; 4], sp: u16, dp: u16, payload: &[u8]| {
+            let mut d = vec![];
+            eth()
+                .ipv4(src, dst, 64)
+                .udp(sp, dp)
+                .write(&mut d, payload)
+                .unwrap();
+            d
+        };
+        let tcp =
+            |from_client: bool, seq: u32, ack: u32, flags: (bool, bool, bool), payload: &[u8]| {
+                let (s, d, sp, dp) = if from_client {
+                    (client, server, 40000, 443)
+                } else {
+                    (server, client, 443, 40000)
+                };
+                let mut b = eth().ipv4(s, d, 64).tcp(sp, dp, seq, 64000);
+                if flags.0 {
+                    b = b.syn();
+                }
+                if flags.1 {
+                    b = b.ack(ack);
+                }
+                if flags.2 {
+                    b = b.fin();
+                }
+                let mut out = vec![];
+                b.write(&mut out, payload).unwrap();
+                out
+            };
+        add(
+            0,
+            udp(client, resolver, 5555, 53, &query(9, "api.github.com", 1)),
+        );
+        add(
+            21,
+            udp(
+                resolver,
+                client,
+                53,
+                5555,
+                &response(9, "api.github.com", None, &[[140, 82, 121, 4]], 60, 0),
+            ),
+        );
+        add(30, tcp(true, 1000, 0, (true, false, false), &[]));
+        add(50, tcp(false, 5000, 1001, (true, true, false), &[]));
+        add(50, tcp(true, 1001, 5001, (false, true, false), &[]));
+        let hello = client_hello("api.github.com", &["h2"]);
+        add(60, tcp(true, 1001, 5001, (false, true, false), &hello));
+        add(
+            90,
+            tcp(
+                false,
+                5001,
+                1001 + hello.len() as u32,
+                (false, true, false),
+                &server_hello(true, 0x1301, None),
+            ),
+        );
+        add(
+            500,
+            tcp(
+                true,
+                1001 + hello.len() as u32,
+                5400,
+                (false, true, true),
+                &[],
+            ),
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("e2e.pcap");
+        let raws: Vec<RawPacket> = frames
+            .iter()
+            .map(|(ts, d)| RawPacket {
+                id: 0,
+                ts_micros: *ts,
+                captured_len: d.len() as u32,
+                original_len: d.len() as u32,
+                data: d.clone(),
+            })
+            .collect();
+        write_pcap(std::fs::File::create(&path).unwrap(), raws.iter()).unwrap();
+
+        struct Sink<'a>(&'a Pipeline, std::sync::Mutex<Vec<Processed>>);
+        impl OfflineSink for Sink<'_> {
+            fn progress(&self, _: &Progress) {}
+            fn batch(&self, packets: Vec<RawPacket>) {
+                self.1.lock().unwrap().push(self.0.process(packets));
+            }
+        }
+        let p = Pipeline::default();
+        let sink = Sink(&p, Default::default());
+        let out = offline::run(&path, &AtomicBool::new(false), &sink).unwrap();
+        assert_eq!(out.packets, 8);
+
+        let outs = sink.1.lock().unwrap();
+        let packets: Vec<_> = outs.iter().flat_map(|o| o.packets.iter()).collect();
+        assert_eq!(packets.len(), 8);
+        assert_eq!(packets[0].info, "Standard query A api.github.com");
+        assert_eq!(packets[1].latency, Some(21_000));
+        assert_eq!(packets[5].info, "Client Hello (SNI: api.github.com)");
+        assert_eq!(packets[6].info, "Server Hello");
+
+        let flows = p.flows.lock().unwrap().snapshot();
+        let tcp_flow = flows.iter().find(|f| f.protocol == "TCP").unwrap();
+        assert_eq!(tcp_flow.latency, Some(20_000)); // SYN → SYN/ACK
+        assert_eq!(tcp_flow.domains, vec!["api.github.com"]); // from the earlier DNS answer
+        let tls = tcp_flow.tls.as_ref().unwrap();
+        assert_eq!(
+            (tls.version.as_deref(), tls.sni.as_deref()),
+            (Some("TLS 1.3"), Some("api.github.com"))
+        );
+        assert_eq!(flows.len(), 2);
+
+        let kinds: Vec<_> = outs
+            .iter()
+            .flat_map(|o| o.events.iter().map(|e| e.kind))
+            .collect();
+        for k in [
+            EventKind::DnsQuery,
+            EventKind::DnsResponse,
+            EventKind::FlowStarted,
+            EventKind::TcpConnect,
+            EventKind::TlsHandshake,
+        ] {
+            assert!(kinds.contains(&k), "missing {k:?}");
+        }
+        let snap = p.analytics();
+        assert_eq!(snap.tcp.packets, 6);
+        assert_eq!(snap.dns.queries, 1);
+        assert_eq!(
+            snap.rankings
+                .protocols
+                .iter()
+                .map(|r| r.key.as_str())
+                .collect::<Vec<_>>()
+                .contains(&"TLS"),
+            true
+        );
+        assert!(snap.problems.is_empty());
+    }
 }

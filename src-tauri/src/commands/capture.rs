@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -21,11 +22,51 @@ const ANALYTICS_INTERVAL: Duration = Duration::from_secs(1);
 pub struct CaptureState {
     session: Mutex<Option<CaptureSession>>,
     pub pipeline: Arc<Pipeline>,
+    /// A capture file is currently being opened.
+    pub offline_running: Arc<AtomicBool>,
+    pub offline_cancel: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+impl CaptureState {
+    /// A live capture is running or paused.
+    pub fn live_active(&self) -> bool {
+        self.session
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|s| matches!(s.state(), SessionState::Running | SessionState::Paused))
+    }
+}
+
+pub fn state_payload(state: SessionState) -> StatePayload {
+    StatePayload { state, error: None }
+}
+
+/// Pushes everything one processed batch produced to the frontend.
+pub fn emit_processed(app: &AppHandle, out: crate::pipeline::Processed) {
+    if !out.packets.is_empty() {
+        let _ = app.emit("capture://packets", out.packets);
+    }
+    if !out.flows.is_empty() {
+        let _ = app.emit("capture://flows", out.flows);
+    }
+    if !out.events.is_empty() {
+        let _ = app.emit("capture://events", out.events);
+    }
+    if !out.dns.is_empty() || out.dns_stats.is_some() {
+        let _ = app.emit(
+            "capture://dns",
+            DnsPayload {
+                transactions: out.dns,
+                stats: out.dns_stats,
+            },
+        );
+    }
 }
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct StatePayload {
+pub struct StatePayload {
     state: SessionState,
     error: Option<IpcError>,
 }
@@ -48,23 +89,7 @@ impl CaptureSink for TauriSink {
         if packets.is_empty() {
             return;
         }
-        let out = self.pipeline.process(packets);
-        let _ = self.app.emit("capture://packets", out.packets);
-        if !out.flows.is_empty() {
-            let _ = self.app.emit("capture://flows", out.flows);
-        }
-        if !out.events.is_empty() {
-            let _ = self.app.emit("capture://events", out.events);
-        }
-        if !out.dns.is_empty() || out.dns_stats.is_some() {
-            let _ = self.app.emit(
-                "capture://dns",
-                DnsPayload {
-                    transactions: out.dns,
-                    stats: out.dns_stats,
-                },
-            );
-        }
+        emit_processed(&self.app, self.pipeline.process(packets));
     }
 
     fn on_stats(&self, stats: &StatsSnapshot) {

@@ -5,8 +5,9 @@ import { useUiStore } from "@/stores/ui";
 import { captureActions } from "@/lib/captureActions";
 
 export function CaptureToolbar() {
-  const { state, mode, interfaces, selectedInterface, selectInterface } = useCaptureStore();
+  const { state, interfaces, selectedInterface, selectInterface } = useCaptureStore();
   const setView = useUiStore((s) => s.setView);
+  const stats = useCaptureStore((s) => s.stats);
   const running = state === "capturing";
   const paused = state === "paused";
   const busy = state === "processing";
@@ -29,7 +30,7 @@ export function CaptureToolbar() {
           Resume
         </Button>
       ) : (
-        <Button variant="primary" icon={<Play size={14} />} disabled={running || busy || mode === "offline" || !selectedInterface} onClick={captureActions.start}>
+        <Button variant="primary" icon={<Play size={14} />} disabled={running || busy || !selectedInterface} onClick={captureActions.start}>
           Start
         </Button>
       )}
@@ -45,7 +46,7 @@ export function CaptureToolbar() {
       <Button icon={<FolderOpen size={14} />} disabled={running || busy} onClick={captureActions.openFile}>
         Open PCAP
       </Button>
-      <Button icon={<Save size={14} />} disabled={running || busy} onClick={captureActions.save}>
+      <Button icon={<Save size={14} />} disabled={busy || stats.packets === 0} onClick={captureActions.save}>
         Save Capture
       </Button>
       <IconButton label="Settings" onClick={() => setView("settings")}>

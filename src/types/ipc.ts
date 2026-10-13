@@ -256,3 +256,24 @@ export interface AnalyticsSnapshot {
   rankings: Rankings;
   problems: Problem[];
 }
+
+export interface OpenProgress {
+  phase?: "counting" | "parsing";
+  processed?: number;
+  total?: number;
+  bytesRead?: number;
+  fileBytes?: number;
+  fileName: string;
+  done: boolean;
+  cancelled: boolean;
+  error: IpcError | null;
+  /** The packet list was capped; flows, DNS and analytics still cover the whole file. */
+  rowsTruncated: boolean;
+  truncatedTail: boolean;
+  skipped: number;
+}
+
+export interface SaveResult {
+  packets: number;
+  evicted: boolean;
+}
