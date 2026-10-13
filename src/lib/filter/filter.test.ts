@@ -260,3 +260,39 @@ describe("address helpers", () => {
     expect(parseAddress("not an ip")).toBeNull();
   });
 });
+
+describe("randomised inputs", () => {
+  // Deterministic generator so failures reproduce.
+  const rng = (seed: number) => () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  const pieces = ["tcp", "udp", "dns", "(", ")", "&&", "||", "!", "not", "and", "or", "ip", "dst.port", "=", "!=", ">", "<=", "contains", '"x"', "443", "1.2.3.4", "10.0.0.0/8", "::1", "100ms", "1MB", "domain", "\\", "'", '"', "\u0000", "µs", "latency", "flags", "syn", " ", "  "];
+
+  it("never throws anything but FilterError, and evaluation never throws", () => {
+    const rand = rng(42);
+    let parsed = 0;
+    for (let i = 0; i < 20_000; i++) {
+      const n = 1 + Math.floor(rand() * 9);
+      const text = Array.from({ length: n }, () => pieces[Math.floor(rand() * pieces.length)]).join(rand() < 0.7 ? " " : "");
+      const r = parseFilter(text);
+      if (r.ok) {
+        parsed++;
+        expect(() => evaluate(r.ast, pkt)).not.toThrow();
+        expect(typeof evaluate(r.ast, pkt)).toBe("boolean");
+      } else {
+        expect(r.error.name).toBe("FilterError");
+        expect(Number.isInteger(r.error.position)).toBe(true);
+        expect(r.error.position).toBeGreaterThanOrEqual(0);
+      }
+    }
+    expect(parsed).toBeGreaterThan(100); // the generator does produce valid filters too
+  });
+
+  it("random bytes never crash the lexer", () => {
+    const rand = rng(7);
+    for (let i = 0; i < 5000; i++) {
+      const s = Array.from({ length: Math.floor(rand() * 40) }, () => String.fromCharCode(Math.floor(rand() * 0x2fff))).join("");
+      const { tokens, error } = lex(s);
+      expect(Array.isArray(tokens)).toBe(true);
+      if (error) expect(error.name).toBe("FilterError");
+    }
+  });
+});

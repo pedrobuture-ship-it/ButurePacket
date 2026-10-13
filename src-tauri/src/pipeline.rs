@@ -723,4 +723,91 @@ mod tests {
             t.elapsed().as_secs_f64() * 1000.0
         );
     }
+
+    /// Garbage and damaged traffic must never panic or corrupt state, whatever the bytes are.
+    #[test]
+    fn hostile_traffic_never_panics() {
+        use crate::testgen::Synth;
+        struct Rng(u64);
+        impl Rng {
+            fn next(&mut self) -> u64 {
+                self.0 ^= self.0 >> 12;
+                self.0 ^= self.0 << 25;
+                self.0 ^= self.0 >> 27;
+                self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+            }
+        }
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        let mut synth = Synth::new(3, 40);
+        let p = Pipeline::default();
+        let mut id = 1u64;
+        for round in 0..60 {
+            let mut batch = Vec::new();
+            for _ in 0..200 {
+                let mut data = match rng.next() % 4 {
+                    // pure noise of random length (including empty and jumbo)
+                    0 => (0..(rng.next() % 3000) as usize)
+                        .map(|_| rng.next() as u8)
+                        .collect(),
+                    // valid traffic with a few corrupted bytes
+                    1 => {
+                        let mut d = synth.next_packet().data;
+                        for _ in 0..1 + rng.next() % 6 {
+                            let at = (rng.next() as usize) % d.len().max(1);
+                            if let Some(b) = d.get_mut(at) {
+                                *b = rng.next() as u8;
+                            }
+                        }
+                        d
+                    }
+                    // valid traffic cut short anywhere
+                    2 => {
+                        let mut d = synth.next_packet().data;
+                        d.truncate((rng.next() as usize) % (d.len() + 1));
+                        d
+                    }
+                    // a plausible Ethernet/IP header followed by noise
+                    _ => {
+                        let mut d = vec![0u8; 12];
+                        d.extend(if rng.next().is_multiple_of(2) {
+                            [0x08, 0x00]
+                        } else {
+                            [0x86, 0xdd]
+                        });
+                        d.push(if d[12] == 0x08 {
+                            0x40 | (rng.next() % 16) as u8
+                        } else {
+                            0x60
+                        });
+                        d.extend((0..(rng.next() % 200) as usize).map(|_| rng.next() as u8));
+                        d
+                    }
+                };
+                // a hostile DNS/TLS payload on the well-known ports now and then
+                if rng.next().is_multiple_of(10) && data.len() > 60 {
+                    data[12] = 0x08;
+                    data[13] = 0x00;
+                }
+                batch.push(RawPacket {
+                    id,
+                    ts_micros: (round * 1000 + (rng.next() % 5000) as i64) - 2000, // may go backwards
+                    captured_len: data.len() as u32,
+                    original_len: (data.len() as u32).wrapping_add((rng.next() % 5) as u32),
+                    data,
+                });
+                id += 1;
+            }
+            let out = p
+                .process_guarded(batch)
+                .expect("a batch of hostile packets must not panic");
+            assert_eq!(out.packets.len(), 200);
+            let up = p.drain_updates();
+            assert!(up.flows.iter().all(|f| f.total_packets > 0));
+        }
+        // the state it leaves behind is still usable
+        let snap = p.analytics(true);
+        assert!(snap.series.iter().all(|b| b.span >= 1));
+        let _ = p.analytics(false);
+        assert!(serde_json::to_string(&p.flows.lock_recover().snapshot()).is_ok());
+    }
 }

@@ -4,6 +4,7 @@ use rusqlite::{Row, ToSql, Transaction, params, params_from_iter};
 use serde::Deserialize;
 
 use super::database::Database;
+use super::sql_id;
 use crate::capture::CaptureError;
 use crate::protocols::PacketSummary;
 
@@ -152,7 +153,7 @@ impl PacketQuery {
             );
         }
         if let Some(v) = self.flow_id {
-            add("flow_id = ?", vec![Box::new(v as i64)]);
+            add("flow_id = ?", vec![Box::new(sql_id(v))]);
         }
         if let Some(v) = &self.domain {
             add("domain = ?", vec![Box::new(lower(v))]);
@@ -160,7 +161,7 @@ impl PacketQuery {
         if let Some(v) = self.after_id {
             add(
                 if self.descending { "id < ?" } else { "id > ?" },
-                vec![Box::new(v as i64)],
+                vec![Box::new(sql_id(v))],
             );
         }
         let sql = if clauses.is_empty() {
@@ -211,7 +212,7 @@ pub fn count_packets(db: &Database, q: &PacketQuery) -> Result<u64, CaptureError
 pub fn packet_by_id(db: &Database, id: u64) -> Result<Option<PacketSummary>, CaptureError> {
     match db.conn.query_row(
         &format!("SELECT {COLUMNS} FROM packets WHERE id = ?1"),
-        [id as i64],
+        [sql_id(id)],
         from_row,
     ) {
         Ok(p) => Ok(Some(p)),
@@ -462,6 +463,42 @@ mod tests {
             }
             assert_eq!(seen, expected);
         }
+    }
+
+    #[test]
+    fn out_of_range_ids_cannot_wrap_into_negative_numbers() {
+        let db = db_with(
+            &(1..=5)
+                .map(|i| sample(i, "1.1.1.1", "2.2.2.2", None, i as i64))
+                .collect::<Vec<_>>(),
+        );
+        // u64::MAX as i64 would be -1 and match every row; clamped it matches none after the last id.
+        let after_max = PacketQuery {
+            after_id: Some(u64::MAX),
+            ..Default::default()
+        };
+        assert!(query_packets(&db, &after_max).unwrap().is_empty());
+        let flow_max = PacketQuery {
+            flow_id: Some(u64::MAX),
+            ..Default::default()
+        };
+        assert_eq!(count_packets(&db, &flow_max).unwrap(), 0);
+        assert!(packet_by_id(&db, u64::MAX).unwrap().is_none());
+        // descending from "after MAX" starts at the end
+        let desc = PacketQuery {
+            after_id: Some(u64::MAX),
+            descending: true,
+            limit: Some(2),
+            ..Default::default()
+        };
+        assert_eq!(
+            query_packets(&db, &desc)
+                .unwrap()
+                .iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>(),
+            vec![5, 4]
+        );
     }
 
     #[test]

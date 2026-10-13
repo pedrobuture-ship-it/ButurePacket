@@ -660,4 +660,14 @@ mod tests {
         ev.clear();
         assert!(ev.snapshot().is_empty());
     }
+
+    #[test]
+    fn tracking_sets_are_reset_instead_of_growing_forever() {
+        let mut ev = EventEngine::new();
+        for i in 0..(MAX_TRACKING_ENTRIES as u64 + 5) {
+            ev.tls_announced.insert(i);
+        }
+        ev.push(1, EventKind::FlowStarted, None, None, None, "x", None);
+        assert!(ev.tls_announced.len() < 10);
+    }
 }

@@ -72,7 +72,7 @@ pub fn query_events(db: &Database, q: &EventQuery) -> Result<Vec<TimelineEvent>,
     }
     if let Some(v) = q.flow_id {
         clauses.push("flow_id = ?");
-        args.push((v as i64).into());
+        args.push(super::sql_id(v).into());
     }
     if let Some(k) = q.kind {
         clauses.push("kind = ?");
