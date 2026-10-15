@@ -66,7 +66,7 @@ export function CaptureView() {
           {report.commands.length > 0 && (
             <div className="rounded border border-line bg-bg">
               <div className="flex items-center justify-between border-b border-line px-3 py-1.5 text-[11px] text-muted">
-                <span>Run this yourself in a terminal — ButurePacket will not run it</span>
+                <span>Run this yourself in a terminal — B&M Packet will not run it</span>
               </div>
               {report.commands.map((c) => (
                 <div key={c} className="flex items-center gap-3 px-3 py-2">

@@ -55,5 +55,5 @@ pub fn run() {
             commands::recent::forget_recent_capture,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running ButurePacket");
+        .expect("error while running B&M Packet");
 }

@@ -76,7 +76,7 @@ export function SettingsView() {
 
         <Panel title="About" bodyClassName="flex flex-col gap-2 p-4 text-xs">
           <p className="text-[13px] text-fg">
-            ButurePacket <span className="font-mono text-muted">{info ? `v${info.version}` : ""}</span> <span className="text-muted">{info?.platform}</span>
+            B&M Packet <span className="font-mono text-muted">{info ? `v${info.version}` : ""}</span> <span className="text-muted">{info?.platform}</span>
           </p>
           <p className="text-muted">A modern network traffic explorer. Everything runs on this computer: no account, no cloud, no telemetry, no packet injection. Captured data stays here unless you save or share it yourself.</p>
         </Panel>

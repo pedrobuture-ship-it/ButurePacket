@@ -44,7 +44,7 @@ pub struct PermissionReport {
     pub summary: String,
     /// Plain-language steps for the user.
     pub guidance: Vec<String>,
-    /// Commands the user may choose to run themselves. ButurePacket never runs them.
+    /// Commands the user may choose to run themselves. B&M Packet never runs them.
     pub commands: Vec<String>,
 }
 
@@ -110,7 +110,7 @@ pub fn guidance_for(state: PermissionState, exe: Option<&str>) -> (Vec<String>, 
         );
     }
     let mut guidance = vec![
-        "ButurePacket needs permission from the operating system to read packets from a network interface.".into(),
+        "B&M Packet needs permission from the operating system to read packets from a network interface.".into(),
         "It never asks for your password and never runs sudo for you.".into(),
         "You can still open and analyse PCAP and PCAPNG files without any special permission.".into(),
     ];
@@ -123,7 +123,7 @@ pub fn guidance_for(state: PermissionState, exe: Option<&str>) -> (Vec<String>, 
         commands.push(format!(
             "sudo setcap cap_net_raw,cap_net_admin=eip {target}"
         ));
-        guidance.push("Then restart ButurePacket. Running the whole application as root is possible but not recommended.".into());
+        guidance.push("Then restart B&M Packet. Running the whole application as root is possible but not recommended.".into());
     } else {
         guidance.push("Grant packet-capture access to this application in your operating system, then restart it.".into());
     }

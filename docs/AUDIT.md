@@ -1,6 +1,6 @@
 # Technical audit
 
-Reviewer's pass over the whole of ButurePacket, written **before** any fixes. Findings are ranked
+Reviewer's pass over the whole of B&M Packet, written **before** any fixes. Findings are ranked
 CRITICAL → LOW. Each entry gives the file, the location, the problem, the impact and the recommended
 fix. A final section records what was done about each one.
 

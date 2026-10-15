@@ -1,8 +1,8 @@
-# ButurePacket
+# B&M Packet
 
 `A modern network traffic explorer.`
 
-ButurePacket turns a firehose of packets into something you can read. It captures live traffic (or
+B&M Packet turns a firehose of packets into something you can read. It captures live traffic (or
 opens PCAP/PCAPNG files), groups packets into conversations, correlates DNS, TLS and connection
 events, and tells the story of a connection in plain language — keeping what was *observed* clearly
 apart from what is only *inferred*.
@@ -154,7 +154,7 @@ cd src-tauri && cargo build --release   # just the binary: target/release/buture
 
 ## Linux permissions
 
-Reading packets needs permission from the OS. ButurePacket never asks for your password and never
+Reading packets needs permission from the OS. B&M Packet never asks for your password and never
 runs `sudo`. Open **Capture** in the sidebar to see whether capture is *Available*, *Limited* or
 *Unavailable*, and why. The usual one-time fix, which you run yourself, grants the capture
 capabilities to the binary:
@@ -208,5 +208,5 @@ Opening PCAP/PCAPNG files needs no special permission.
 
 ## License
 
-ButurePacket is an authorial project. **No license is granted**: the source is not released under an
+B&M Packet is an authorial project. **No license is granted**: the source is not released under an
 open-source or any other license, and all rights are reserved by the author.

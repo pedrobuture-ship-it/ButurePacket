@@ -212,7 +212,7 @@ impl Database {
             .pragma_query_value(None, "user_version", |r| r.get(0))?;
         if version > SCHEMA_VERSION {
             return Err(CaptureError::Storage(format!(
-                "this database was written by a newer version of ButurePacket (schema {version})"
+                "this database was written by a newer version of B&M Packet (schema {version})"
             )));
         }
         if version < 1 {

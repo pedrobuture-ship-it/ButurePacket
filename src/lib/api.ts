@@ -54,7 +54,7 @@ const inDesktopShell = () => typeof window !== "undefined" && "__TAURI_INTERNALS
 
 export function call<K extends keyof Commands>(cmd: K, args: Commands[K][0]): Promise<Commands[K][1]> {
   if (!inDesktopShell()) {
-    return Promise.reject<Commands[K][1]>({ kind: "unavailable", message: "ButurePacket must run inside the desktop app." } satisfies IpcError);
+    return Promise.reject<Commands[K][1]>({ kind: "unavailable", message: "B&M Packet must run inside the desktop app." } satisfies IpcError);
   }
   return invoke<Commands[K][1]>(cmd, args);
 }

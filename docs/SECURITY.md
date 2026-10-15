@@ -1,6 +1,6 @@
 # Security notes
 
-ButurePacket reads data that other people control: network traffic and capture files. Everything
+B&M Packet reads data that other people control: network traffic and capture files. Everything
 that comes from either of them is treated as hostile. This document records the threat model, what
 is enforced, and where.
 

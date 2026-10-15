@@ -8,7 +8,7 @@ describe("permission store", () => {
   it("reports a friendly error when the backend is unreachable (plain browser)", async () => {
     const r = await usePermissionStore.getState().check();
     expect(r).toBeNull();
-    expect(usePermissionStore.getState()).toMatchObject({ checking: false, error: "ButurePacket must run inside the desktop app." });
+    expect(usePermissionStore.getState()).toMatchObject({ checking: false, error: "B&M Packet must run inside the desktop app." });
   });
 
   it("stores the report from the backend", async () => {

@@ -20,7 +20,7 @@ function Logo() {
         <path d="M130 540 H330 L400 300 L530 760 L630 420 L700 540 H894" fill="none" stroke="#58E38C" strokeWidth="72" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <div className="pointer-events-none leading-tight">
-        <div className="text-[15px] font-semibold text-primary">ButurePacket</div>
+        <div className="text-[15px] font-semibold text-primary">B&M Packet</div>
         <div className="whitespace-nowrap text-[10px] text-muted">A modern network traffic explorer</div>
       </div>
     </div>

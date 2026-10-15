@@ -8,7 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ErrorBoundary label="ButurePacket">
+    <ErrorBoundary label="B&M Packet">
       <App />
     </ErrorBoundary>
   </StrictMode>,
